@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+    networks:
+      - chess-net
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    networks:
+      - chess-net
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  chess-net:
+    driver: bridge

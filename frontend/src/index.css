@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 font-sans antialiased;
+    background: radial-gradient(ellipse at top, #0f1a2e 0%, #050a10 100%);
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-800;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-600 rounded-full;
+  }
+}
+
+@layer components {
+  .glass {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-hover {
+    @apply glass transition-all duration-200;
+  }
+  .glass-hover:hover {
+    background: rgba(30, 41, 59, 0.8);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .btn-primary {
+    @apply px-6 py-3 rounded-xl font-semibold text-white transition-all duration-200 active:scale-95;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.35);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 6px 30px rgba(99, 102, 241, 0.5);
+    transform: translateY(-1px);
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 rounded-xl font-medium text-white transition-all duration-200 active:scale-95;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+  }
+  .btn-danger:hover {
+    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 rounded-xl font-medium transition-all duration-200 active:scale-95;
+    background: rgba(51, 65, 85, 0.8);
+    border: 1px solid rgba(100, 116, 139, 0.4);
+    color: #94a3b8;
+  }
+  .btn-secondary:hover {
+    background: rgba(71, 85, 105, 0.8);
+    color: #f1f5f9;
+  }
+
+  .status-dot {
+    @apply w-2.5 h-2.5 rounded-full;
+  }
+  .status-dot.online {
+    @apply bg-emerald-400;
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+  }
+  .status-dot.offline {
+    @apply bg-slate-500;
+  }
+  .status-dot.waiting {
+    @apply bg-amber-400 animate-pulse;
+  }
+}
+
+/* Chess board custom styles */
+.chess-container {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,0.06),
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 120px rgba(99, 102, 241, 0.08);
+}
+
+/* Piece capture animation */
+@keyframes captureFlash {
+  0% { background-color: rgba(239, 68, 68, 0.6); }
+  100% { background-color: transparent; }
+}
+
+.capture-flash {
+  animation: captureFlash 0.3s ease-out;
+}
+
+/* Move dot indicator */
+.move-dot::after {
+  content: '';
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.2);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Check pulse */
+@keyframes checkPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+.in-check {
+  animation: checkPulse 1s ease-in-out infinite;
+}
