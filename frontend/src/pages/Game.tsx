@@ -132,6 +132,15 @@ export default function Game() {
           flash(e.sq, '💎', 'buff', 'підвищення');
           toast(`💎 ${who(e.color)}: скарб на ${e.sq} підвищив фігуру`, { duration: 4000 });
           break;
+        case 'wall_break':
+          flash(e.sq, e.destroyed ? '💥' : '⚒', e.destroyed ? 'buff' : 'neutral', e.destroyed ? 'пролом' : 'тріщина');
+          toast(
+            e.destroyed
+              ? `⚒ ${who(e.color)}: стіна на ${e.sq} впала — прохід відкрито`
+              : `⚒ ${who(e.color)}: стіна на ${e.sq} тріснула, ще один удар`,
+            { duration: 3500 },
+          );
+          break;
       }
     }
   }, [flash, who]);

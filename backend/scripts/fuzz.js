@@ -114,7 +114,7 @@ function fuzzMagic() {
 function fuzzExpand() {
   const E = require('../dist/modes/expand');
   const stats = { games: 0, plies: 0, expansions: 0, spawned: 0, portals: 0, promos: 0, treasures: 0,
-                  mates: 0, stalemates: 0, maxSizeReached: 0, spawnMates: 0 };
+                  wallHits: 0, wallsDown: 0, mates: 0, stalemates: 0, maxSizeReached: 0, spawnMates: 0 };
   for (let g = 0; g < GAMES; g++) {
     const d = E.initExpandData();
     stats.games++;
@@ -139,6 +139,7 @@ function fuzzExpand() {
         if (e.type === 'portal_jump') stats.portals++;
         if (e.type === 'promote') stats.promos++;
         if (e.type === 'treasure') stats.treasures++;
+        if (e.type === 'wall_break') { stats.wallHits++; if (e.destroyed) stats.wallsDown++; }
       }
 
       // ── invariants ──
@@ -149,6 +150,13 @@ function fuzzExpand() {
       if (grew !== shouldGrow) throw new Error(`expansion schedule broken at ply ${expectedPlies}: ${sizeBefore}->${sizeAfter}`);
       if (grew && sizeAfter !== sizeBefore + 2) throw new Error('ring is not +2');
       if (!E.findKingSq(d, 'w') || !E.findKingSq(d, 'b')) throw new Error('a king was captured');
+      for (const [tsq, t] of Object.entries(d.terrain)) {
+        if (t.type === 'wall' && !(t.hp > 0)) throw new Error(`wall at ${tsq} survived with hp ${t.hp}`);
+      }
+      // hitting a wall must not teleport or move the attacker
+      const brk = res.events.find((e) => e.type === 'wall_break');
+      if (brk && d.lastMove.to !== brk.sq) throw new Error('wall hit moved the attacker');
+      if (brk && !d.board[d.lastMove.from]) throw new Error('attacker vanished after hitting a wall');
       for (const [sq, p] of Object.entries(d.board)) {
         const [x, y] = E.parseSq(sq);
         if (x < d.min || x > d.max || y < d.min || y > d.max) throw new Error(`piece ${sq} outside the map`);

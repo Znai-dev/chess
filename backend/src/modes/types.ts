@@ -2,7 +2,7 @@ export type GameMode = 'expand' | 'lootbox' | 'fog' | 'magic';
 export type Color = 'w' | 'b';
 
 /** A move the player may make right now. `kind` tells the client how to draw it. */
-export type MoveKind = 'normal' | 'rage' | 'knight' | 'teleport';
+export type MoveKind = 'normal' | 'rage' | 'knight' | 'teleport' | 'break';
 export interface MoveOption {
   from: string;
   to: string;
@@ -27,7 +27,8 @@ export type GameEvent =
   | { type: 'expand'; size: number; zone: string; pieces: number }
   | { type: 'portal_jump'; from: string; to: string; color: Color }
   | { type: 'promote'; sq: string; color: Color }
-  | { type: 'treasure'; sq: string; to: string; color: Color };
+  | { type: 'treasure'; sq: string; to: string; color: Color }
+  | { type: 'wall_break'; sq: string; color: Color; destroyed: boolean };
 
 /** What the player to move must do before the turn can pass. */
 export type Pending =

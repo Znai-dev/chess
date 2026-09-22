@@ -14,12 +14,14 @@ export const GRID = 20;
 export const START_SIZE = 4;
 export const MAX_SIZE = 20;
 export const PLIES_PER_EXPANSION = 3;
+/** Hits needed to bring a wall down. Attacking one costs a move; the attacker stays put. */
+export const WALL_HP = 2;
 
 export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 export type TerrainType = 'wall' | 'portal' | 'treasure';
 
 export interface ExpandPiece { type: PieceType; color: Color }
-export interface TerrainCell { type: TerrainType; pair?: string }
+export interface TerrainCell { type: TerrainType; pair?: string; hp?: number }
 
 export interface ExpandData {
   min: number;
@@ -169,10 +171,14 @@ export function portalTarget(d: ExpandData, to: string, color: Color): string {
 function pseudoMoves(d: ExpandData, x: number, y: number, piece: ExpandPiece, out: MoveOption[]): void {
   const from = sqName(x, y);
   const add = (tx: number, ty: number): boolean => {
-    if (!inBounds(d, tx, ty) || isWall(d, tx, ty)) return false;
-    const target = d.board[sqName(tx, ty)];
-    if (target && target.color === piece.color) return false;
+    if (!inBounds(d, tx, ty)) return false;
     const to = sqName(tx, ty);
+    if (isWall(d, tx, ty)) {
+      out.push({ from, to, kind: 'break', capture: false });
+      return false;   // the wall still blocks the ray until it comes down
+    }
+    const target = d.board[to];
+    if (target && target.color === piece.color) return false;
     const kind = d.terrain[to]?.type === 'portal' ? 'teleport' : 'normal';
     out.push({ from, to, kind, capture: !!target });
     return !target;   // sliding stops on the first piece
@@ -195,10 +201,11 @@ function pseudoMoves(d: ExpandData, x: number, y: number, piece: ExpandPiece, ou
       }
       for (const dx of [-1, 1]) {
         const cx = x + dx, cy = y + dir;
-        if (!inBounds(d, cx, cy) || isWall(d, cx, cy)) continue;
-        const target = d.board[sqName(cx, cy)];
-        if (!target || target.color === piece.color) continue;
+        if (!inBounds(d, cx, cy)) continue;
         const to = sqName(cx, cy);
+        if (isWall(d, cx, cy)) { out.push({ from, to, kind: 'break', capture: false }); continue; }
+        const target = d.board[to];
+        if (!target || target.color === piece.color) continue;
         out.push({ from, to, kind: d.terrain[to]?.type === 'portal' ? 'teleport' : 'normal', capture: true });
       }
       break;
@@ -216,9 +223,27 @@ function pseudoMoves(d: ExpandData, x: number, y: number, piece: ExpandPiece, ou
  * then put everything back. The portal hop is included: without it a pinned
  * piece could block a check and then be flung away by the portal.
  */
+function kingSafeAt(d: ExpandData, kingSq: string | null, color: Color): boolean {
+  if (!kingSq) return true;
+  const [kx, ky] = parseSq(kingSq);
+  return !isAttacked(d, kx, ky, otherColor(color));
+}
+
 function leavesKingSafe(d: ExpandData, from: string, to: string, color: Color, kingSq: string | null): boolean {
   const piece = d.board[from];
   if (!piece) return false;
+
+  const wall = d.terrain[to];
+  if (wall?.type === 'wall') {
+    // Hitting a wall costs the move but moves nothing, so it can never answer a
+    // check; only the blow that brings the wall down changes the position.
+    if ((wall.hp ?? 1) > 1) return kingSafeAt(d, kingSq, color);
+    delete d.terrain[to];
+    const safe = kingSafeAt(d, kingSq, color);
+    d.terrain[to] = wall;
+    return safe;
+  }
+
   const final = portalTarget(d, to, color);
   const capA = d.board[to];
   const capB = final !== to ? d.board[final] : undefined;
@@ -338,8 +363,8 @@ export function maybeExpand(d: ExpandData): GameEvent[] {
   for (let i = 0; i < zone.walls; i++) {
     const sq = take();
     if (!sq) break;
-    d.terrain[sq] = { type: 'wall' };
-    d.terrain[mirrorSq(sq)] = { type: 'wall' };
+    d.terrain[sq] = { type: 'wall', hp: WALL_HP };
+    d.terrain[mirrorSq(sq)] = { type: 'wall', hp: WALL_HP };
   }
   for (let i = 0; i < zone.portals; i++) {
     const sq = take();
@@ -372,8 +397,22 @@ export function applyExpandMove(d: ExpandData, from: string, to: string): Expand
 
   const piece = d.board[from]!;
   const events: GameEvent[] = [];
-  const final = portalTarget(d, to, color);
   const glyph = GLYPH[piece.type];
+
+  const wall = d.terrain[to];
+  if (wall?.type === 'wall') {
+    const hp = (wall.hp ?? 1) - 1;
+    const destroyed = hp <= 0;
+    if (destroyed) delete d.terrain[to]; else wall.hp = hp;
+    events.push({ type: 'wall_break', sq: to, color, destroyed });
+    d.lastMove = { from, to };
+    d.turn = otherColor(color);
+    d.plies++;
+    events.push(...maybeExpand(d));
+    return { ok: true, events, san: `${glyph}${from}⚒${to}${destroyed ? '✕' : ''}` };
+  }
+
+  const final = portalTarget(d, to, color);
 
   const victimA = d.board[to];
   const victimB = final !== to ? d.board[final] : undefined;

@@ -213,20 +213,20 @@
 
 /* ── Expansion mode board ─────────────────────────────────────────────── */
 .big-board {
-  /* one knob drives everything: cell size, board size, glyph size */
-  /* the board must also fit the window height, sidebar and all */
-  --cell: min(calc(680px / var(--cells)), calc(92vw / var(--cells)), calc(72vh / var(--cells)), 68px);
+  /* one knob drives cell size, board size and every em-based detail below */
+  --cell: min(calc(640px / var(--cells)), calc(90vw / var(--cells)), calc(70vh / var(--cells)), 60px);
   position: relative;
   display: grid;
   width: calc(var(--cell) * var(--cells));
   height: calc(var(--cell) * var(--cells));
-  font-size: calc(var(--cell) * 0.74);
-  border-radius: 10px;
+  font-size: var(--cell);
+  border-radius: 8px;
   overflow: hidden;
-  transition: width .55s cubic-bezier(.22, 1, .36, 1), height .55s cubic-bezier(.22, 1, .36, 1);
+  /* no width/height transition: it leaves the board stuck at a stale size when the
+     tab is not compositing, and the per-cell reveal already sells the growth */
   box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.07),
-    0 24px 80px rgba(0, 0, 0, 0.6);
+    0 0 0 1px rgba(255, 255, 255, .10),
+    0 20px 60px rgba(0, 0, 0, .55);
 }
 
 .bb-cell {
@@ -243,30 +243,69 @@
   to   { opacity: 1; transform: none; }
 }
 
-.bb-wall { filter: brightness(.5) saturate(.55); }
+/* Pieces: react-chessboard's own SVG set, sized by the cell instead of a pixel width */
+.bb-piece { position: absolute; inset: 6%; z-index: 3; pointer-events: none; }
+.bb-piece > div { width: 100%; height: 100%; cursor: default !important; }
+.bb-piece svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  filter: drop-shadow(0 .02em .02em rgba(0, 0, 0, .35));
+}
 
-.bb-piece { position: relative; z-index: 3; line-height: 1; }
-.bb-white { color: #ffffff; text-shadow: 1px 1px 0 #0b0f16, -1px 1px 0 #0b0f16, 1px -1px 0 #0b0f16, -1px -1px 0 #0b0f16, 0 0 3px rgba(0,0,0,.8); }
-.bb-black { color: #10141c; text-shadow: 1px 1px 0 #d7dee8, -1px 1px 0 #d7dee8, 1px -1px 0 #d7dee8, -1px -1px 0 #d7dee8; }
+/* ── Terrain ── */
+.bb-art { position: absolute; z-index: 2; pointer-events: none; }
+.bb-art svg { width: 100%; height: 100%; display: block; transform-origin: 50% 50%; }
 
-.bb-terrain { position: relative; z-index: 2; font-size: .78em; line-height: 1; }
-.bb-terrain-portal { filter: drop-shadow(0 0 3px rgba(168,85,247,.9)); }
-.bb-terrain-treasure { filter: drop-shadow(0 0 3px rgba(250,204,21,.9)); }
-.bb-terrain-corner { position: absolute; right: 2%; top: 2%; z-index: 4; font-size: .34em; line-height: 1; }
+.bb-wall-art { inset: 0; background: rgba(24, 26, 24, .55); }
+.bb-wall-art svg rect { fill: #6f6d64; stroke: #35342f; stroke-width: .7; }
+.bb-wall-art.cracked svg rect { fill: #85817533; stroke: #35342f; }
+.bb-crack { fill: none; stroke: #1c1814; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 
-.bb-last     { position: absolute; inset: 0; background: rgba(255, 255, 0, .26); z-index: 1; }
-.bb-check    { position: absolute; inset: 0; z-index: 1; background: radial-gradient(circle, rgba(239,68,68,.85) 20%, rgba(239,68,68,.3) 70%, transparent 100%); }
-.bb-selected { position: absolute; inset: 0; background: rgba(20, 180, 100, .45); z-index: 1; }
-.bb-movable  { position: absolute; inset: 0; z-index: 1; box-shadow: inset 0 0 0 .07em rgba(52, 211, 153, .85); }
+.bb-portal-art { inset: 15%; }
+.bb-portal-art svg { animation: bbSpin 7s linear infinite; }
+.bb-portal-ring { fill: none; stroke: #c084fc; stroke-width: 2.6; stroke-dasharray: 7 4.5; }
+.bb-portal-core { fill: #7c3aed; }
+@keyframes bbSpin { to { transform: rotate(360deg); } }
 
-.bb-dot { position: absolute; width: 30%; height: 30%; border-radius: 50%; background: rgba(15, 23, 42, .42); z-index: 4; }
-.bb-dot-portal { background: rgba(168, 85, 247, .8); box-shadow: 0 0 .15em rgba(168,85,247,.9); }
-.bb-capture { position: absolute; inset: 7%; border-radius: 50%; border: .11em solid rgba(239, 68, 68, .85); z-index: 4; }
+.bb-treasure-art { inset: 17%; }
+.bb-treasure-art svg { animation: bbBob 2.6s ease-in-out infinite; }
+.bb-gem-body { fill: #f0a020; stroke: #7c4a10; stroke-width: .8; }
+.bb-gem-face { fill: #fcd34d; }
+@keyframes bbBob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-5%) scale(1.06); }
+}
 
-.bb-label { position: absolute; z-index: 4; font-size: .26em; font-weight: 700; color: rgba(15, 23, 42, .6); }
-.bb-label-file { bottom: 2%; right: 4%; }
-.bb-label-rank { top: 2%; left: 4%; }
+/* terrain hidden under a piece: a corner pip so it is still findable */
+.bb-under { position: absolute; right: 7%; top: 7%; width: 17%; height: 17%; border-radius: 50%; z-index: 4; box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
+.bb-under-portal   { background: #a855f7; }
+.bb-under-treasure { background: #fbbf24; }
 
+/* ── Square states ── */
+.bb-last     { position: absolute; inset: 0; z-index: 1; background: rgba(255, 238, 88, .30); }
+.bb-selected { position: absolute; inset: 0; z-index: 1; background: rgba(20, 180, 100, .42); }
+.bb-movable  { position: absolute; inset: 0; z-index: 1; box-shadow: inset 0 0 0 max(2px, .05em) rgba(52, 211, 153, .9); }
+.bb-check    {
+  position: absolute; inset: 0; z-index: 1;
+  background: radial-gradient(circle, rgba(239, 68, 68, .9) 18%, rgba(239, 68, 68, .35) 62%, transparent 100%);
+}
+
+/* ── Move hints ── */
+.bb-dot { position: absolute; z-index: 5; width: 28%; height: 28%; border-radius: 50%; background: rgba(20, 30, 20, .38); }
+.bb-dot.portal { background: rgba(168, 85, 247, .85); box-shadow: 0 0 .12em rgba(168, 85, 247, .9); }
+.bb-capture { position: absolute; z-index: 5; inset: 5%; border-radius: 50%; border: max(2px, .06em) solid rgba(220, 38, 38, .75); }
+.bb-break { position: absolute; z-index: 5; inset: 9%; border-radius: .08em; border: max(2px, .055em) dashed rgba(251, 146, 60, .95); }
+.bb-break.final { border-style: solid; background: rgba(251, 146, 60, .3); }
+
+/* ── Coordinates ── */
+.bb-label { position: absolute; z-index: 6; font-size: max(8px, .22em); font-weight: 700; line-height: 1; }
+.bb-label-rank { top: 6%; left: 7%; }
+.bb-label-file { bottom: 6%; right: 7%; }
+.bb-label.on-dark  { color: rgba(238, 238, 210, .8); }
+.bb-label.on-light { color: rgba(90, 105, 70, .85); }
+
+/* ── One-shot bursts ── */
 .bb-flash {
   position: absolute; z-index: 10; pointer-events: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;

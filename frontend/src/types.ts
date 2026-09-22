@@ -12,7 +12,7 @@ export interface LogEntry {
   san: string;
 }
 
-export type MoveKind = 'normal' | 'rage' | 'knight' | 'teleport';
+export type MoveKind = 'normal' | 'rage' | 'knight' | 'teleport' | 'break';
 export interface MoveOption {
   from: string;
   to: string;
@@ -41,7 +41,8 @@ export type GameEvent =
   | { type: 'expand'; size: number; zone: string; pieces: number }
   | { type: 'portal_jump'; from: string; to: string; color: Color }
   | { type: 'promote'; sq: string; color: Color }
-  | { type: 'treasure'; sq: string; to: string; color: Color };
+  | { type: 'treasure'; sq: string; to: string; color: Color }
+  | { type: 'wall_break'; sq: string; color: Color; destroyed: boolean };
 
 // ── Lootbox ──────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export interface ExpandClientData {
   maxSize: number;
   /** square → "wp" / "bk" … */
   board: Record<string, string>;
-  terrain: Record<string, { type: TerrainType; pair?: string }>;
+  terrain: Record<string, { type: TerrainType; pair?: string; hp?: number }>;
   zone: Record<string, number>;
   zones: { name: string; tint: string }[];
   plies: number;
