@@ -1,44 +1,57 @@
-# Запуск Chess Online
+# Chess Online
 
-## Одна команда
+Класичні шахи + три режими: лутбокси, туман війни, магічні шахи.
+Опис режимів — у `mode_lootboxes.md`, `mode_fog_of_war.md`, `mode_magic_chess.md`.
 
-```bash
-cd chess
-docker-compose up --build -d
+## Як це працює в продакшені
+
+```
+git push → GitHub Actions: docker build → ghcr.io
+                              ↓ (підписаний HMAC-запит)
+                     deploy.mriiacraft.pp.ua
+                              ↓
+                сервер: docker compose pull + up -d
 ```
 
-Після збірки (перший раз ~2-3 хв) гра буде доступна:
+Нічого запускати вручну не треба: коміт у `main` за ~2 хвилини
+опиняється на сервері. Збірка йде на процесорах GitHub, сервер лише
+завантажує готові образи.
 
 | | |
 |---|---|
-| 🌍 **Інтернет** | **http://www.mriiacraft.pp.ua** |
-| 💻 Локально | http://localhost |
+| Образи | `ghcr.io/znai-dev/chess-backend`, `ghcr.io/znai-dev/chess-frontend` |
+| Сервер | `/srv/projects/chess/docker-compose.yml` |
+| Маршрут | `/srv/caddy/sites/chess.caddy` |
+| Логи деплою | `journalctl -u deploy-webhook -f` |
 
-## Як грати онлайн з другом
+## Адреса
 
-1. Відкрий **http://www.mriiacraft.pp.ua**
-2. Введи ім'я → "Створити гру"
-3. Скопіюй посилання → надішли другу (воно вже містить правильний домен)
-4. Друг відкриває посилання → вводить ім'я → підключається
-5. Гра починається автоматично
+Гра живе не в корені домену, а на секретному шляху. Сам шлях у репозиторій
+не потрапляє — він заданий лише на сервері:
 
-**Ти граєш білими, друг — чорними.**
+- `/srv/projects/chess/.slug` — сам слаг
+- `BASE_PATH` у `docker-compose.yml` — те, що бачить контейнер
 
-## Зупинити
+Фронтенд дізнається свій префікс у рантаймі: `docker-entrypoint.d/40-base-path.sh`
+підставляє його в `index.html` і в конфіг nginx при старті контейнера.
+Порожній `BASE_PATH` означає «працюй від кореня» — саме так це поводиться
+локально.
+
+Щоб змінити адресу: відредагувати `BASE_PATH` у compose на сервері й
+`docker compose up -d` — перезбірка не потрібна.
+
+## Локальна розробка
 
 ```bash
-docker-compose down
+cd backend  && npm install && npm run dev    # :3001
+cd frontend && npm install && npm run dev    # :5173, проксі на бекенд
 ```
 
-## Перебудувати після змін
+Vite віддає застосунок від кореня, префікс не застосовується.
+
+## Перевірити збірку так, як її збирає CI
 
 ```bash
-docker-compose up --build --force-recreate -d
+cd frontend && npm run build
+cd backend  && npm run build
 ```
-
-## Примітки
-
-- Порт 80 вже відкритий у файрволі Windows (з налаштувань vocab demon)
-- Роутер вже пробрасовує порт 80
-- DNS `www.mriiacraft.pp.ua → 176.37.79.54` вже активний
-- Якщо IP зміниться — оновити A-запис `www` в панелі DNS
