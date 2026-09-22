@@ -31,6 +31,7 @@ export default function Game() {
   const [gameOver, setGameOver] = useState<GameOverEvent | null>(null);
   const [showShare, setShowShare] = useState(false);
   const [flashes, setFlashes] = useState<Flash[]>([]);
+  const [zoneHighlight, setZoneHighlight] = useState<number | null>(null);
   const flashSeq = useRef(0);
   const yourColorRef = useRef<Color | null>(null);
   const playersRef = useRef<PlayerInfo[]>([]);
@@ -172,6 +173,8 @@ export default function Game() {
 
     socket.on('move-made', (state: GameState) => {
       applyState(state);
+      // a zone spotlight is for planning; never leave the board dimmed over a move
+      setZoneHighlight(null);
       if (state.events?.length) handleEvents(state.events);
     });
 
@@ -427,6 +430,7 @@ export default function Game() {
                   onMove={handleMove}
                   lastMove={gameState.lastMove}
                   flashes={flashes}
+                  highlightZone={zoneHighlight}
                 />
               ) : gameState ? (
                 <ChessBoard
@@ -494,7 +498,13 @@ export default function Game() {
             )}
 
             {mode === 'expand' && ex && gameState && (
-              <ExpandPanel data={ex} yourColor={yourColor} turn={gameState.turn} />
+              <ExpandPanel
+                data={ex}
+                yourColor={yourColor}
+                turn={gameState.turn}
+                highlight={zoneHighlight}
+                onHighlight={setZoneHighlight}
+              />
             )}
 
             {mode === 'fog' && (

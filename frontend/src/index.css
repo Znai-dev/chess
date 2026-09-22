@@ -313,6 +313,22 @@
 }
 .bb-flash-label { font-size: .3em; font-weight: 800; color: #fff; white-space: nowrap; text-shadow: 0 1px 3px #000; }
 
+.bb-dim { position: absolute; inset: 0; z-index: 7; background: rgba(6, 10, 14, .62); transition: opacity .2s; }
+
+.zone-row {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 4px 6px; border-radius: 8px;
+  font-size: .72rem; color: #cbd5e1; text-align: left;
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s;
+}
+.zone-row:hover { background: rgba(71, 85, 105, .35); }
+.zone-row.active { background: rgba(99, 102, 241, .2); border-color: rgba(129, 140, 248, .55); }
+.zone-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-name.newest { color: #6ee7b7; font-weight: 600; }
+.zone-fresh { font-size: 9px; color: #64748b; flex-shrink: 0; }
+.zone-counts { display: flex; gap: 5px; font-size: 10px; color: #94a3b8; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
 .zone-chip {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: .7rem; color: #cbd5e1;

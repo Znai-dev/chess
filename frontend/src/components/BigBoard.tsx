@@ -18,6 +18,8 @@ interface Props {
   onMove: (from: string, to: string) => void;
   lastMove?: { from: string; to: string } | null;
   flashes?: Flash[];
+  /** zone index to spotlight; every other ring is dimmed */
+  highlightZone?: number | null;
 }
 
 const FILES = 'abcdefghijklmnopqrst';
@@ -82,7 +84,7 @@ function Treasure() {
 }
 
 export default function BigBoard({
-  data, yourColor, canInteract, legalMoves, onMove, lastMove, flashes,
+  data, yourColor, canInteract, legalMoves, onMove, lastMove, flashes, highlightZone,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const { min, max, size } = data;
@@ -184,6 +186,7 @@ export default function BigBoard({
               style={{ background: bg, boxShadow: edges.join(', ') || undefined }}
               onClick={() => handleClick(sq)}
             >
+              {highlightZone != null && zoneIdx !== highlightZone && <span className="bb-dim" />}
               {isLast && <span className="bb-last" />}
               {isCheck && <span className="bb-check" />}
               {selected === sq && <span className="bb-selected" />}

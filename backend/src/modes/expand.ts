@@ -195,9 +195,14 @@ function pseudoMoves(d: ExpandData, x: number, y: number, piece: ExpandPiece, ou
       // No double step and no en passant: the board keeps changing shape under them.
       const dir = piece.color === 'w' ? 1 : -1;
       const fy = y + dir;
-      if (inBounds(d, x, fy) && !isWall(d, x, fy) && !d.board[sqName(x, fy)]) {
+      if (inBounds(d, x, fy)) {
         const to = sqName(x, fy);
-        out.push({ from, to, kind: d.terrain[to]?.type === 'portal' ? 'teleport' : 'normal', capture: false });
+        if (isWall(d, x, fy)) {
+          // a pawn only moves forward, so a wall in front would wall it in for good
+          out.push({ from, to, kind: 'break', capture: false });
+        } else if (!d.board[to]) {
+          out.push({ from, to, kind: d.terrain[to]?.type === 'portal' ? 'teleport' : 'normal', capture: false });
+        }
       }
       for (const dx of [-1, 1]) {
         const cx = x + dx, cy = y + dir;

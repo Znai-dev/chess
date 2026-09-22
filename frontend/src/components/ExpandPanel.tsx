@@ -1,23 +1,42 @@
+import { useMemo } from 'react';
 import type { ExpandClientData, Color } from '../types';
 
 interface Props {
   data: ExpandClientData;
   yourColor: Color | null;
   turn: Color;
+  /** zone index currently highlighted on the board, or null */
+  highlight: number | null;
+  onHighlight: (zone: number | null) => void;
 }
 
 const TERRAIN = [
-  { icon: '⛰', name: 'Стіни',  desc: 'Перекривають промінь тур, слонів і ферзів. Їх можна проломити: бийте як по ворожій фігурі (пішак — по діагоналі). Два удари — і стіна падає, але фігура при ударі лишається на місці.' },
+  { icon: '⛰', name: 'Стіни', desc: 'Перекривають промінь тур, слонів і ферзів. Ламаються: бийте по стіні звідки могли б узяти фігуру — пішак і вперед, і по діагоналі. Удар коштує хід, фігура лишається на місці; два удари — і стіна падає.' },
   { icon: '🌀', name: 'Портали', desc: 'Парні. Заходиш в один — вилітаєш з парного на протилежному боці карти. Зайнятий своєю фігурою портал не спрацьовує.' },
   { icon: '💎', name: 'Скарби', desc: 'Підвищують фігуру на ранг: пішак → кінь → слон → тура → ферзь. Ферзь і король просто проходять повз.' },
 ];
 
-export default function ExpandPanel({ data, yourColor, turn }: Props) {
+export default function ExpandPanel({ data, yourColor, turn, highlight, onHighlight }: Props) {
   const { size, maxSize, nextIn, zones, expansions } = data;
   const full = size >= maxSize;
   // Expansion lands every 3 plies, so it alternates sides; this says whose move it will be.
   const growsOn: Color = nextIn % 2 === 1 ? turn : (turn === 'w' ? 'b' : 'w');
   const growsMine = growsOn === yourColor;
+
+  /** What is actually left standing in each ring — the reason to look at this list at all. */
+  const stats = useMemo(() => {
+    const out = zones.map(() => ({ walls: 0, portals: 0, treasures: 0, pieces: 0 }));
+    for (const [sq, z] of Object.entries(data.zone)) {
+      const s = out[z];
+      if (!s) continue;
+      const t = data.terrain[sq];
+      if (t?.type === 'wall') s.walls++;
+      else if (t?.type === 'portal') s.portals++;
+      else if (t?.type === 'treasure') s.treasures++;
+      if (data.board[sq]) s.pieces++;
+    }
+    return out;
+  }, [data.zone, data.terrain, data.board, zones]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -48,17 +67,38 @@ export default function ExpandPanel({ data, yourColor, turn }: Props) {
       </div>
 
       <div className="glass rounded-2xl p-4">
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">
-          Відкриті землі <span className="text-slate-600">({expansions + 1}/9)</span>
+        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">
+          Землі <span className="text-slate-600">({expansions + 1}/9)</span>
         </p>
-        <div className="flex flex-col gap-1.5">
-          {zones.map((z, i) => (
-            <div key={z.name} className="zone-chip">
-              <span className="zone-swatch" style={{ background: z.tint }} />
-              <span className={i === zones.length - 1 && expansions > 0 ? 'text-emerald-300 font-medium' : ''}>{z.name}</span>
-              {i === zones.length - 1 && expansions > 0 && <span className="text-[10px] text-slate-600">щойно</span>}
-            </div>
-          ))}
+        <p className="text-[10px] text-slate-500 leading-snug mb-2.5">
+          Карта росте кільцями, і кожне кільце — окрема земля зі своїм кольором на дошці.
+          Тут видно, що в ній ще лишилось. Клацніть — підсвітиться на дошці.
+        </p>
+
+        <div className="flex flex-col gap-0.5">
+          {zones.map((z, i) => {
+            const s = stats[i] ?? { walls: 0, portals: 0, treasures: 0, pieces: 0 };
+            const active = highlight === i;
+            const isNewest = i === zones.length - 1 && expansions > 0;
+            return (
+              <button
+                key={z.name}
+                onClick={() => onHighlight(active ? null : i)}
+                className={`zone-row${active ? ' active' : ''}`}
+                title={active ? 'Клацніть ще раз, щоб зняти підсвітку' : `Підсвітити «${z.name}» на дошці`}
+              >
+                <span className="zone-swatch" style={{ background: z.tint }} />
+                <span className={`zone-name${isNewest ? ' newest' : ''}`}>{z.name}</span>
+                {isNewest && <span className="zone-fresh">щойно</span>}
+                <span className="zone-counts">
+                  {s.walls > 0 && <span title="стіни">⛰{s.walls}</span>}
+                  {s.portals > 0 && <span title="портали">🌀{s.portals}</span>}
+                  {s.treasures > 0 && <span title="скарби">💎{s.treasures}</span>}
+                  {s.walls + s.portals + s.treasures === 0 && <span className="text-slate-600">чисто</span>}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
