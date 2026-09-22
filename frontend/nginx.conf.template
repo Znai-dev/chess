@@ -28,7 +28,13 @@ server {
 
     location %%BASE_PATH%%/ {
         rewrite ^%%BASE_PATH%%/(.*)$ /$1 break;
-        try_files $uri /index.html;
+        try_files $uri @spa;
+    }
+
+    # Named location: an internal redirect to /index.html would be re-matched
+    # against the prefix locations below and hit the catch-all 404.
+    location @spa {
+        try_files /index.html =404;
     }
 %%ROOT_BLOCK%%
 }
