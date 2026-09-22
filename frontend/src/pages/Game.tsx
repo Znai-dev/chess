@@ -4,13 +4,18 @@ import { Chess } from 'chess.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import socket from '../socket';
-import type { GameState, Color, GameOverEvent } from '../types';
-import ChessBoard from '../components/ChessBoard';
+import type { GameState, Color, GameOverEvent, GameEvent, PlayerInfo } from '../types';
+import { EFFECTS, SPELL_META } from '../effects';
+import ChessBoard, { Badge, Flash } from '../components/ChessBoard';
 import PlayerCard from '../components/PlayerCard';
 import MoveHistory from '../components/MoveHistory';
 import GameOverModal from '../components/GameOverModal';
 import ShareModal from '../components/ShareModal';
 import SpellPanel from '../components/SpellPanel';
+import LootPanel from '../components/LootPanel';
+import TurnBar from '../components/TurnBar';
+
+const MODE_LABEL: Record<string, string> = { lootbox: '📦 Лутбокси', fog: '🌫️ Туман', magic: '✨ Магія' };
 
 export default function Game() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -23,8 +28,10 @@ export default function Game() {
   const [yourColor, setYourColor] = useState<Color | null>(null);
   const [gameOver, setGameOver] = useState<GameOverEvent | null>(null);
   const [showShare, setShowShare] = useState(false);
-  const [pendingSpellId, setPendingSpellId] = useState<string | null>(null);
-  const chessRef = useRef(new Chess());
+  const [flashes, setFlashes] = useState<Flash[]>([]);
+  const flashSeq = useRef(0);
+  const yourColorRef = useRef<Color | null>(null);
+  const playersRef = useRef<PlayerInfo[]>([]);
 
   function submitName() {
     const trimmed = nameInput.trim();
@@ -33,37 +40,113 @@ export default function Game() {
     setPlayerName(trimmed);
   }
 
+  // ── Bursts on the board ───────────────────────────────────────────────────
+  const flash = useCallback((sq: string, icon: string, tone: Flash['tone'], label?: string) => {
+    const id = `f${++flashSeq.current}`;
+    setFlashes((fs) => [...fs, { id, sq, icon, tone, label }]);
+    setTimeout(() => setFlashes((fs) => fs.filter((f) => f.id !== id)), 1400);
+  }, []);
+
+  const who = useCallback((color: Color) => {
+    const me = yourColorRef.current;
+    if (color === me) return 'Ви';
+    const p = playersRef.current.find((pl) => pl.color === color);
+    return p?.name ?? (color === 'w' ? 'Білі' : 'Чорні');
+  }, []);
+
+  const handleEvents = useCallback((events: GameEvent[]) => {
+    const me = yourColorRef.current;
+    for (const e of events) {
+      switch (e.type) {
+        case 'pickup': {
+          const m = EFFECTS[e.effect];
+          const mine = e.color === me;
+          flash(e.sq, m.icon, m.tone, m.name);
+          toast(
+            <div className="flex flex-col gap-0.5">
+              <span><b>{who(e.color)}</b> {mine ? 'відкрили' : 'відкрив'} скриню: <b>{m.icon} {m.name}</b></span>
+              <span className="text-xs text-slate-400">{m.desc}</span>
+            </div>,
+            { icon: '📦', duration: 5000 },
+          );
+          break;
+        }
+        case 'extra_move_lost':
+          toast(`⚡ Додатковий хід пропав: фігурі на ${e.sq} нікуди ходити`, { duration: 4000 });
+          break;
+        case 'shield_absorb':
+          flash(e.at, '🛡', 'neutral', 'поглинуто');
+          toast(e.stayed ? `🛡 Щит на ${e.at} поглинув удар — атакуючий лишився на місці` : `🛡 Щит на ${e.at} поглинув удар`, { duration: 4000 });
+          break;
+        case 'bomb':
+          flash(e.at, '💥', 'debuff', 'бум');
+          toast(`💣 Бомба на ${e.at}! Обидві фігури згоріли`, { icon: '💥', duration: 4500 });
+          break;
+        case 'effects_suspended':
+          if (e.color === me) toast('Ефекти на ваших фігурах зняті на цей хід — інакше ходу не було б', { icon: 'ℹ️', duration: 4500 });
+          break;
+        case 'teleport':
+          flash(e.to, '🌀', 'buff');
+          break;
+        case 'spell': {
+          const meta = SPELL_META[e.spellId];
+          flash(e.target, meta?.icon ?? '✨', 'buff');
+          if (e.color !== me || e.spellId !== 'invisible') {
+            toast(`${meta?.icon ?? '✨'} ${who(e.color)}: заклинання на ${e.target}`, { duration: 3500 });
+          }
+          break;
+        }
+        case 'rebirth':
+          flash(e.sq, '♻️', 'buff', 'відродження');
+          toast(`♻️ ${who(e.color)}: фігура повернулась на ${e.sq}`, { duration: 4000 });
+          break;
+        case 'magic_teleport':
+          flash(e.to, '🌀', 'buff');
+          toast(`🌀 Портал: ${e.from} → ${e.to}`, { duration: 3000 });
+          break;
+        case 'thawed':
+          if (e.color === me) toast('❄️ Заморозка розтанула: тільки та фігура могла врятувати короля', { duration: 4500 });
+          break;
+        case 'blocked_by_invisible':
+          break;
+      }
+    }
+  }, [flash, who]);
+
   // ── Socket setup ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!roomId || !playerName) return;
     socket.connect();
     socket.emit('join-room', { roomId, playerName });
 
-    socket.on('game-state', (state: GameState) => {
-      try { chessRef.current.load(state.fen); } catch { /* masked FEN may be incomplete */ }
+    const applyState = (state: GameState) => {
+      yourColorRef.current = state.yourColor;
+      playersRef.current = state.players;
       setGameState(state);
       setYourColor(state.yourColor);
+    };
+
+    socket.on('game-state', (state: GameState) => {
+      applyState(state);
       if (state.status === 'waiting' && state.yourColor === 'w') setShowShare(true);
       if (state.status === 'playing') setShowShare(false);
     });
 
     socket.on('game-start', (state: GameState) => {
-      try { chessRef.current.load(state.fen); } catch { /* masked FEN */ }
-      setGameState(state);
+      applyState(state);
       setShowShare(false);
       toast.success('Гра почалась!', { icon: '♟' });
     });
 
     socket.on('move-made', (state: GameState) => {
-      try { chessRef.current.load(state.fen); } catch { /* masked FEN */ }
-      setGameState(state);
+      applyState(state);
+      if (state.events?.length) handleEvents(state.events);
     });
 
     socket.on('player-update', (players: GameState['players']) => {
+      playersRef.current = players;
       setGameState((prev) => prev ? { ...prev, players } : prev);
     });
-
-    socket.on('your-color', (color: Color) => setYourColor(color));
 
     socket.on('game-over', (event: GameOverEvent) => {
       setGameOver(event);
@@ -71,10 +154,8 @@ export default function Game() {
     });
 
     socket.on('rematch-start', (state: GameState) => {
-      try { chessRef.current.load(state.fen); } catch { /* masked FEN */ }
-      setGameState(state);
+      applyState(state);
       setGameOver(null);
-      setPendingSpellId(null);
       toast.success('Реванш! Кольори поміняні.', { icon: '🔄' });
     });
 
@@ -91,75 +172,47 @@ export default function Game() {
     });
 
     socket.on('draw-declined', () => toast.error('Нічию відхилено'));
-
-    socket.on('invalid-move', ({ message }: { message: string }) => {
-      toast.error(message);
+    socket.on('invalid-move', ({ message }: { message: string }) => toast.error(message));
+    socket.on('spell-error', ({ message }: { message: string }) => toast.error(message));
+    socket.on('player-disconnected', (data: { name: string }) => {
+      toast.error(`${data.name} відключився — чекаємо на повернення`, { duration: 5000 });
     });
-
-    socket.on('player-disconnected', (data: { color: Color }) => {
-      toast.error(`${data.color === 'w' ? '⬜' : '⬛'} Суперник відключився`, { duration: 5000 });
-    });
-
     socket.on('error', (err: { message: string }) => { toast.error(err.message); navigate('/'); });
 
-    // Lootbox events
-    socket.on('lootbox-needs-target', () => {
-      // State update via move-made will show candidates from lootboxData.shieldBreakPending
-    });
-
-    // Magic events
-    socket.on('spell-needs-target', ({ spellId }: { spellId: string }) => {
-      setPendingSpellId(spellId);
-      toast('Клікніть на ціль для заклинання', { icon: '🎯', duration: 5000 });
-    });
-
-    socket.on('spell-cast', () => {
-      setPendingSpellId(null);
-    });
-
-    socket.on('spell-error', (err: { message: string }) => {
-      toast.error(err.message);
-      setPendingSpellId(null);
-    });
-
-    socket.on('shield-blocked', ({ at }: { at: string }) => {
-      toast(`🛡 Щит на ${at} поглинув атаку!`, { duration: 3000 });
-    });
-
     return () => {
-      socket.off('game-state'); socket.off('game-start'); socket.off('move-made');
-      socket.off('player-update'); socket.off('your-color'); socket.off('game-over');
-      socket.off('rematch-start'); socket.off('draw-offered'); socket.off('draw-declined');
-      socket.off('player-disconnected'); socket.off('error'); socket.off('invalid-move');
-      socket.off('lootbox-needs-target');
-      socket.off('spell-needs-target'); socket.off('spell-cast'); socket.off('spell-error');
-      socket.off('shield-blocked');
+      for (const ev of ['game-state', 'game-start', 'move-made', 'player-update', 'game-over', 'rematch-start',
+        'draw-offered', 'draw-declined', 'invalid-move', 'spell-error', 'player-disconnected', 'error']) socket.off(ev);
       socket.disconnect();
     };
-  }, [roomId, playerName]);
+  }, [roomId, playerName, navigate, handleEvents]);
 
-  // ── Derived pending state ────────────────────────────────────────────────
+  // ── Derived view state ────────────────────────────────────────────────────
+  const mode = gameState?.mode ?? 'classic';
+  const isSpectator = yourColor === null;
+  const playing = gameState?.status === 'playing';
+  const myTurn = !!gameState && playing && !isSpectator && gameState.turn === yourColor;
+  const pending = gameState?.pending ?? null;
+  const myPending = pending && pending.color === yourColor ? pending : null;
   const lb = gameState?.lootboxData;
-  const shieldBreakPending = lb?.shieldBreakPending?.color === yourColor ? lb.shieldBreakPending : null;
-  const extraMovePending   = lb?.extraMovePending?.color === yourColor   ? lb.extraMovePending   : null;
-  const teleportPending    = lb?.teleportPending?.color === yourColor    ? lb.teleportPending    : null;
-  // Active as soon as spell-needs-target is received (pendingSpellId set), regardless of server state sync
-  const magicTargetPending = pendingSpellId;
+  const md = gameState?.magicData;
 
-  // Target selection mode: either shield_break or magic spell target
-  const inTargetMode = !!(shieldBreakPending || magicTargetPending);
+  // Tab title: the cheapest "it's your move" signal there is
+  useEffect(() => {
+    document.title = myTurn ? '● Ваш хід — Chess Online' : 'Chess Online';
+    return () => { document.title = 'Chess Online'; };
+  }, [myTurn]);
 
-  const targetCandidates = useMemo(() => {
-    if (shieldBreakPending) return shieldBreakPending.candidates;
-    if (magicTargetPending) return []; // any square, no pre-highlight
-    return [];
-  }, [shieldBreakPending, magicTargetPending]);
+  const checkSquare = useMemo(() => {
+    if (!gameState?.inCheck) return null;
+    try {
+      const c = new Chess(gameState.fen);
+      for (const row of c.board()) for (const sq of row) if (sq?.type === 'k' && sq.color === gameState.turn) return sq.square;
+    } catch { /* masked */ }
+    return null;
+  }, [gameState?.inCheck, gameState?.fen, gameState?.turn]);
 
-  const restrictToSquare = extraMovePending?.sq || teleportPending?.sq || null;
-
-  // Fog: squares to cover with opaque overlay (hides enemy pieces visually)
   const fogCoverSquares = useMemo(() => {
-    if (gameState?.mode !== 'fog' || !gameState.fogData) return undefined;
+    if (mode !== 'fog' || !gameState?.fogData) return undefined;
     const visible = new Set(gameState.fogData.visibleSquares);
     const hidden: string[] = [];
     for (let f = 0; f < 8; f++)
@@ -168,187 +221,105 @@ export default function Game() {
         if (!visible.has(sq)) hidden.push(sq);
       }
     return hidden;
-  }, [gameState?.mode, gameState?.fogData]);
+  }, [mode, gameState?.fogData]);
 
-  // ── Mode overlay: extra square styles + icons ────────────────────────────
-  const modeSquareStyles = useMemo((): Record<string, CSSProperties> => {
+  const squareStyles = useMemo((): Record<string, CSSProperties> => {
     const styles: Record<string, CSSProperties> = {};
-
-    // Lootbox overlays
-    if (gameState?.mode === 'lootbox' && lb) {
-      for (const lbEntry of lb.lootboxes) {
-        styles[lbEntry.sq] = { background: 'rgba(234,179,8,0.2)', outline: '2px solid rgba(234,179,8,0.6)', outlineOffset: '-2px' };
+    if (mode === 'lootbox' && lb) {
+      for (const box of lb.lootboxes) {
+        styles[box.sq] = { background: 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, rgba(234,179,8,0.08) 70%)' };
       }
-      for (const [sq, buff] of Object.entries(lb.buffs)) {
-        const bg = buff.type === 'shield' ? 'rgba(59,130,246,0.35)' :
-                   buff.type === 'extra_move' ? 'rgba(34,197,94,0.35)' :
-                   buff.type === 'teleport' ? 'rgba(168,85,247,0.35)' :
-                   'rgba(239,68,68,0.35)';
-        styles[sq] = { ...(styles[sq] || {}), background: bg };
-      }
-      for (const sq of Object.keys(lb.debuffs)) {
-        styles[sq] = { ...(styles[sq] || {}), background: 'rgba(239,68,68,0.4)' };
-      }
-      if (extraMovePending) {
-        styles[extraMovePending.sq] = { ...(styles[extraMovePending.sq] || {}), outline: '3px solid rgba(34,197,94,0.9)', outlineOffset: '-3px' };
-      }
-      if (teleportPending) {
-        styles[teleportPending.sq] = { ...(styles[teleportPending.sq] || {}), outline: '3px solid rgba(168,85,247,0.9)', outlineOffset: '-3px' };
+      if (myPending?.kind === 'extra_move') {
+        styles[myPending.sq] = { boxShadow: 'inset 0 0 0 3px rgba(52,211,153,0.95)' };
       }
     }
-
-    // Magic overlays
-    if (gameState?.mode === 'magic' && gameState.magicData) {
-      const d = gameState.magicData;
-      for (const sq of [...d.teleports.a, ...d.teleports.b]) {
-        const used = d.usedTeleports.includes(sq);
-        styles[sq] = { outline: used ? '2px dashed rgba(168,85,247,0.35)' : '2px solid rgba(168,85,247,0.65)', outlineOffset: '-2px' };
+    if (mode === 'magic' && md) {
+      for (const sq of [...md.teleports.a, ...md.teleports.b]) {
+        const used = md.usedTeleports.includes(sq);
+        styles[sq] = { outline: used ? '2px dashed rgba(168,85,247,0.3)' : '2px solid rgba(168,85,247,0.7)', outlineOffset: '-2px' };
       }
-      for (const sq of d.rebirthSqs) {
-        styles[sq] = { ...(styles[sq] || {}), background: 'rgba(34,197,94,0.12)', outline: '2px solid rgba(34,197,94,0.5)', outlineOffset: '-2px' };
+      for (const sq of md.rebirthSqs) {
+        styles[sq] = { background: 'rgba(34,197,94,0.14)', outline: '2px solid rgba(34,197,94,0.55)', outlineOffset: '-2px' };
       }
-      for (const sq of Object.keys(d.frozenPieces)) {
-        styles[sq] = { ...(styles[sq] || {}), background: 'rgba(147,197,253,0.4)', boxShadow: 'inset 0 0 0 2px rgba(147,197,253,0.8)' };
-      }
-      for (const sq of Object.keys(d.pieceShields)) {
-        styles[sq] = { ...(styles[sq] || {}), boxShadow: 'inset 0 0 0 3px rgba(59,130,246,0.85)' };
+      for (const sq of Object.keys(md.frozenPieces)) {
+        styles[sq] = { ...(styles[sq] || {}), background: 'rgba(147,197,253,0.45)' };
       }
     }
-
     return styles;
-  }, [gameState, lb, extraMovePending, teleportPending]);
+  }, [mode, lb, md, myPending]);
 
-  const squareIcons = useMemo((): Record<string, string> => {
-    const icons: Record<string, string> = {};
-
-    if (gameState?.mode === 'lootbox' && lb) {
-      for (const lbEntry of lb.lootboxes) icons[lbEntry.sq] = '📦';
-      for (const [sq, buff] of Object.entries(lb.buffs)) {
-        icons[sq] = buff.type === 'shield' ? '🛡' : buff.type === 'extra_move' ? '⚡' : buff.type === 'teleport' ? '🌀' : '🔥';
-      }
-      for (const [sq, debuff] of Object.entries(lb.debuffs)) {
-        icons[sq] = debuff.type === 'skip_turn' ? '💤' : '🚫';
+  const badges = useMemo((): Record<string, Badge> => {
+    const out: Record<string, Badge> = {};
+    if (mode === 'lootbox' && lb) {
+      for (const [sq, eff] of Object.entries(lb.effects)) {
+        const m = EFFECTS[eff.type];
+        out[sq] = { icon: m.icon, title: `${m.name}: ${m.desc}`, tone: m.tone, count: eff.movesLeft || undefined };
       }
     }
-
-    if (gameState?.mode === 'magic' && gameState.magicData) {
-      const d = gameState.magicData;
-      for (const sq of Object.keys(d.frozenPieces)) icons[sq] = '❄️';
-      for (const sq of Object.keys(d.pieceShields)) icons[sq] = '🛡';
+    if (mode === 'magic' && md) {
+      for (const [sq, n] of Object.entries(md.frozenPieces)) out[sq] = { icon: '❄️', title: 'Заморожена', tone: 'magic', count: n };
+      for (const sq of Object.keys(md.pieceShields)) out[sq] = { icon: '🛡', title: 'Міні-щит', tone: 'magic' };
+      for (const [sq, n] of Object.entries(md.invisiblePieces)) {
+        // only the owner sees their own invisible piece marked
+        out[sq] = { icon: '👻', title: 'Невидима для суперника', tone: 'magic', count: Math.max(0, n - 1) || undefined };
+      }
     }
+    return out;
+  }, [mode, lb, md]);
 
-    return icons;
-  }, [gameState, lb]);
+  const centerIcons = useMemo((): Record<string, string> => {
+    const out: Record<string, string> = {};
+    if (mode === 'lootbox' && lb) for (const box of lb.lootboxes) out[box.sq] = '📦';
+    return out;
+  }, [mode, lb]);
 
-  // ── Move handler ──────────────────────────────────────────────────────────
-  const handleMove = useCallback(
-    (from: string, to: string, promotion?: string): boolean => {
-      if (!roomId || !gameState || gameState.status !== 'playing') return false;
+  const selectionExtras = useMemo((): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    if (mode === 'lootbox' && lb) {
+      for (const [sq, eff] of Object.entries(lb.effects)) if (eff.type === 'rage' && eff.rageCells) out[sq] = eff.rageCells;
+    }
+    return out;
+  }, [mode, lb]);
 
-      const mode = gameState.mode;
-
-      // Lootbox pending states
-      if (mode === 'lootbox') {
-        if (teleportPending) {
-          if (from !== teleportPending.sq) return false;
-          const tgt = chessRef.current.get(to as any);
-          if (tgt) return false; // teleport to empty only
-          socket.emit('move', { roomId, move: { from, to } });
-          return true;
-        }
-        if (extraMovePending) {
-          if (from !== extraMovePending.sq) return false;
-          // Normal move with this piece (no local chess.js validation for lootbox moves)
-          socket.emit('move', { roomId, move: { from, to, promotion: promotion || 'q' } });
-          return true;
-        }
-        // Normal lootbox move – skip local validation (berserk / debuff checks are server-side)
-        if (gameState.turn !== yourColor) return false;
-        socket.emit('move', { roomId, move: { from, to, promotion: promotion || 'q' } });
-        return true;
-      }
-
-      if (gameState.turn !== yourColor) return false;
-
-      if (mode === 'fog') {
-        // Skip local validation — server has full board; no optimistic flip to avoid getting stuck
-        socket.emit('move', { roomId, move: { from, to, promotion: promotion || 'q' } });
-        return true;
-      }
-
-      if (mode === 'magic') {
-        const md = gameState.magicData;
-        if (md?.frozenPieces[from]) { toast.error('Фігура заморожена!'); return false; }
-      }
-
-      // Classic / magic: local chess.js validation
-      try {
-        const result = chessRef.current.move({ from, to, promotion: promotion || 'q' });
-        if (!result) return false;
-        socket.emit('move', { roomId, move: { from, to, promotion: promotion || 'q' } });
-        setGameState((prev) =>
-          prev ? { ...prev, fen: chessRef.current.fen(), turn: chessRef.current.turn() as Color } : prev
-        );
-        return true;
-      } catch { return false; }
-    },
-    [roomId, gameState, yourColor, teleportPending, extraMovePending]
-  );
-
-  // ── Target select (shield break / spell target) ────────────────────────
-  const handleTargetSelect = useCallback(
-    (sq: string) => {
-      if (!roomId) return;
-      if (shieldBreakPending) {
-        if (!shieldBreakPending.candidates.includes(sq)) { toast.error('Оберіть сусідню клітинку'); return; }
-        socket.emit('move', { roomId, move: { from: shieldBreakPending.attackerSq, to: sq } });
-        return;
-      }
-      if (magicTargetPending) {
-        socket.emit('spell-target', { roomId, targetSq: sq });
-        setPendingSpellId(null);
-      }
-    },
-    [roomId, shieldBreakPending, magicTargetPending]
-  );
-
-  // ── Skip extra move / teleport ────────────────────────────────────────
-  const handleSkipExtraMove = useCallback(() => {
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleMove = useCallback((from: string, to: string, promotion?: string) => {
     if (!roomId) return;
-    socket.emit('skip-extra-move', { roomId });
+    socket.emit('move', { roomId, move: { from, to, promotion } });
   }, [roomId]);
 
-  // ── Spell casting ──────────────────────────────────────────────────────
-  const handleCastSpell = useCallback(
-    (spellId: string) => {
-      if (!roomId) return;
-      socket.emit('cast-spell', { roomId, spellId });
-    },
-    [roomId]
-  );
+  const handleTargetSelect = useCallback((sq: string) => {
+    if (!roomId || !myPending) return;
+    if (myPending.kind === 'shield_break') socket.emit('move', { roomId, move: { from: myPending.attackerSq, to: sq } });
+    else if (myPending.kind === 'spell_target') socket.emit('spell-target', { roomId, targetSq: sq });
+  }, [roomId, myPending]);
+
+  const targetMode = useMemo(() => {
+    if (!myPending || !playing) return null;
+    if (myPending.kind === 'shield_break') return { candidates: myPending.candidates, onSelect: handleTargetSelect };
+    if (myPending.kind === 'spell_target') return { candidates: null, onSelect: handleTargetSelect };
+    return null;
+  }, [myPending, playing, handleTargetSelect]);
+
+  const handleSkipExtraMove = useCallback(() => { if (roomId) socket.emit('skip-extra-move', { roomId }); }, [roomId]);
+  const handleCastSpell = useCallback((spellId: string) => { if (roomId) socket.emit('cast-spell', { roomId, spellId }); }, [roomId]);
+  const handleCancelSpell = useCallback(() => { if (roomId) socket.emit('cancel-spell', { roomId }); }, [roomId]);
 
   const handleResign = () => {
-    if (!roomId || !gameState || gameState.status !== 'playing') return;
+    if (!roomId || !playing) return;
     if (window.confirm('Ви впевнені, що хочете здатися?')) socket.emit('resign', { roomId });
   };
-
   const handleDrawOffer = () => {
-    if (!roomId || !gameState || gameState.status !== 'playing') return;
+    if (!roomId || !playing) return;
     socket.emit('offer-draw', { roomId });
     toast.success('Пропозицію нічиї надіслано');
   };
-
   const handleRematch = () => { if (roomId) socket.emit('rematch', { roomId }); };
 
   // ── Name entry screen ─────────────────────────────────────────────────
   if (!playerName) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-2xl p-8 w-full max-w-sm"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-8 w-full max-w-sm">
           <div className="text-center mb-6">
             <div className="text-5xl mb-3">♟</div>
             <h2 className="text-xl font-bold text-white mb-1">Вас запросили в гру</h2>
@@ -372,33 +343,30 @@ export default function Game() {
   }
 
   // ── Main game UI ──────────────────────────────────────────────────────
-  const opponent   = gameState?.players.find((p) => p.color !== yourColor);
-  const me         = gameState?.players.find((p) => p.color === yourColor);
-  const isSpectator = yourColor === null;
-  const mode = gameState?.mode ?? 'classic';
-
-  const skipLocalValidation = mode === 'fog' || mode === 'lootbox';
+  const opponent = gameState?.players.find((p) => p.color !== yourColor);
+  const me = gameState?.players.find((p) => p.color === yourColor);
+  const oppColor: Color = yourColor === 'w' ? 'b' : 'w';
+  const material = gameState?.material ?? { w: 0, b: 0 };
+  const captured = gameState?.captured ?? { w: [], b: [] };
+  const pendingSpellId = myPending?.kind === 'spell_target' ? myPending.spellId : null;
+  const spellName = pendingSpellId && md ? md.spells[yourColor!]?.find(s => s.id === pendingSpellId)?.name ?? null : null;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 lg:p-8">
+    // anchored to the top: a vertically centred layout shifts the board every time a hint appears
+    <div className="min-h-screen flex flex-col items-center p-4 lg:p-8">
       <div className="w-full max-w-6xl">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between mb-6"
-        >
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-6">
           <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
             ← На головну
           </button>
           <div className="flex items-center gap-2">
             {mode !== 'classic' && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {mode === 'lootbox' ? '📦 Лутбокси' : mode === 'fog' ? '🌫️ Туман' : '✨ Магія'}
+                {MODE_LABEL[mode]}
               </span>
             )}
             <span className="text-slate-500 text-sm font-mono">#{roomId}</span>
-            <button onClick={() => setShowShare(true)} className="btn-secondary text-xs py-1.5 px-3">
-              📋 Запросити
-            </button>
+            <button onClick={() => setShowShare(true)} className="btn-secondary text-xs py-1.5 px-3">📋 Запросити</button>
           </div>
         </motion.div>
 
@@ -407,32 +375,32 @@ export default function Game() {
           <div className="flex flex-col items-center gap-3 w-full lg:w-auto">
             <PlayerCard
               player={opponent} isOpponent
-              isActive={gameState?.turn !== yourColor && gameState?.status === 'playing'}
-              capturedBy={yourColor} history={gameState?.history ?? []}
+              isActive={!!playing && gameState?.turn === oppColor}
+              captured={captured[oppColor]} advantage={material[oppColor] - material[yourColor ?? 'w']}
             />
 
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              className="chess-container"
+              className={`chess-container ${myTurn ? 'my-turn' : ''}`}
             >
               {gameState ? (
                 <ChessBoard
                   fen={gameState.fen}
                   yourColor={yourColor}
+                  canInteract={myTurn}
+                  legalMoves={gameState.legalMoves}
                   onMove={handleMove}
                   lastMove={gameState.lastMove}
-                  inCheck={gameState.inCheck}
-                  isGameOver={gameState.isGameOver}
-                  turn={gameState.turn}
-                  isSpectator={isSpectator}
-                  extraSquareStyles={modeSquareStyles}
-                  squareIcons={squareIcons}
+                  checkSquare={checkSquare}
+                  squareStyles={squareStyles}
+                  badges={badges}
+                  centerIcons={centerIcons}
                   fogCoverSquares={fogCoverSquares}
-                  targetCandidates={inTargetMode ? targetCandidates : undefined}
-                  onTargetSelect={inTargetMode ? handleTargetSelect : undefined}
-                  restrictToSquare={restrictToSquare}
-                  skipLocalValidation={skipLocalValidation}
+                  targetMode={targetMode}
+                  selectionExtras={selectionExtras}
+                  animationDuration={mode === 'fog' ? 0 : 200}
+                  flashes={flashes}
                 />
               ) : (
                 <div className="w-[480px] h-[480px] flex items-center justify-center bg-slate-800 rounded-xl">
@@ -441,41 +409,24 @@ export default function Game() {
               )}
             </motion.div>
 
-            {/* Pending action hint */}
-            {(shieldBreakPending || extraMovePending || teleportPending) && (
-              <div className="px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-sm text-center flex flex-col gap-1.5">
-                {shieldBreakPending && <span>🛡 Щит зламано! Оберіть сусідню клітинку для посадки</span>}
-                {extraMovePending   && <span>⚡ Додатковий хід! Рухайте виділену фігуру</span>}
-                {teleportPending    && <span>🌀 Телепортація! Клікніть на порожню клітинку</span>}
-                {(extraMovePending || teleportPending) && (
-                  <button
-                    onClick={handleSkipExtraMove}
-                    className="mt-1 text-xs px-3 py-1 rounded-lg bg-slate-700/60 hover:bg-slate-600/60 border border-slate-600/40 text-slate-300 transition-colors"
-                  >
-                    Пропустити
-                  </button>
-                )}
-              </div>
-            )}
+            <TurnBar
+              state={gameState}
+              yourColor={yourColor}
+              spellName={spellName}
+              onSkipExtraMove={handleSkipExtraMove}
+              onCancelSpell={handleCancelSpell}
+            />
 
             <PlayerCard
               player={me} isOpponent={false}
-              isActive={gameState?.turn === yourColor && gameState?.status === 'playing'}
-              capturedBy={yourColor === 'w' ? 'b' : 'w'} history={gameState?.history ?? []}
+              isActive={myTurn}
+              captured={yourColor ? captured[yourColor] : []} advantage={yourColor ? material[yourColor] - material[oppColor] : 0}
             />
           </div>
 
           {/* Sidebar */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex flex-col gap-4 w-full lg:w-72"
-          >
-            <div className="glass rounded-2xl p-4">
-              <StatusBadge gameState={gameState} yourColor={yourColor} />
-            </div>
-
-            {!isSpectator && gameState?.status === 'playing' && (
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="flex flex-col gap-4 w-full lg:w-72">
+            {!isSpectator && playing && (
               <div className="glass rounded-2xl p-4 flex flex-col gap-2">
                 <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Дії</p>
                 <button onClick={handleDrawOffer} className="btn-secondary text-sm w-full">🤝 Запропонувати нічию</button>
@@ -483,15 +434,25 @@ export default function Game() {
               </div>
             )}
 
-            {/* Spells for magic mode */}
-            {mode === 'magic' && gameState?.magicData && yourColor && !isSpectator && (
+            {mode === 'magic' && md && yourColor && (
               <SpellPanel
-                spells={gameState.magicData.spells[yourColor]}
+                data={md}
                 yourColor={yourColor}
-                isYourTurn={gameState.turn === yourColor && gameState.status === 'playing'}
+                isYourTurn={myTurn}
                 pendingSpellId={pendingSpellId}
                 onCastSpell={handleCastSpell}
+                onCancel={handleCancelSpell}
               />
+            )}
+
+            {mode === 'lootbox' && lb && gameState && (
+              <LootPanel data={lb} fen={gameState.fen} yourColor={yourColor} />
+            )}
+
+            {mode === 'fog' && (
+              <div className="glass rounded-2xl p-4 text-xs text-slate-400 leading-relaxed">
+                🌫️ Ви бачите лише клітинки під ударом своїх фігур. Фігура, що дає шах, видима завжди.
+              </div>
             )}
 
             <MoveHistory history={gameState?.history ?? []} />
@@ -510,32 +471,6 @@ export default function Game() {
           />
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-function StatusBadge({ gameState, yourColor }: { gameState: GameState | null; yourColor: Color | null }) {
-  if (!gameState) return <div className="text-slate-500 text-sm animate-pulse2">Підключення...</div>;
-  if (gameState.status === 'waiting') {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="status-dot waiting" />
-        <span className="text-amber-400 text-sm font-medium">Очікування суперника...</span>
-      </div>
-    );
-  }
-  if (gameState.isCheckmate) return <div className="text-red-400 font-semibold text-sm">♚ Мат!</div>;
-  if (gameState.isDraw || gameState.isStalemate) return <div className="text-slate-300 font-semibold text-sm">🤝 Нічия</div>;
-  if (gameState.inCheck) return <div className="text-red-400 font-semibold text-sm animate-pulse2">⚠️ Шах!</div>;
-
-  const isMyTurn = gameState.turn === yourColor;
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`w-3 h-3 rounded-full border-2 ${gameState.turn === 'w' ? 'bg-white border-slate-400' : 'bg-slate-900 border-slate-400'}`} />
-      <span className={`text-sm font-medium ${isMyTurn ? 'text-emerald-400' : 'text-slate-400'}`}>
-        {isMyTurn ? 'Ваш хід' : 'Хід суперника'}
-      </span>
-      <span className="text-slate-600 text-xs ml-auto">Хід {Math.ceil(gameState.history.length / 2)}</span>
     </div>
   );
 }

@@ -1,37 +1,32 @@
-import type { MagicSpellClient, Color } from '../types';
+import type { MagicClientData, Color } from '../types';
+import { SPELL_META } from '../effects';
 
 interface Props {
-  spells: MagicSpellClient[];
+  data: MagicClientData;
   yourColor: Color;
   isYourTurn: boolean;
   pendingSpellId: string | null;
   onCastSpell: (spellId: string) => void;
+  onCancel: () => void;
 }
 
-const SPELL_META: Record<string, { icon: string; desc: string }> = {
-  freeze:     { icon: '❄️', desc: 'Заморожує ворожу фігуру на 2 ходи' },
-  invisible:  { icon: '👻', desc: 'Ховає свою фігуру від суперника на 3 ходи' },
-  minishield: { icon: '🛡', desc: 'Щит поглинає одну атаку на свою фігуру' },
-};
+export default function SpellPanel({ data, yourColor, isYourTurn, pendingSpellId, onCastSpell, onCancel }: Props) {
+  const spells = data.spells[yourColor];
+  const used = data.spellUsedThisTurn[yourColor];
+  const rebirth = data.rebirthCounters[yourColor];
+  const lost = data.captured[yourColor];
 
-const MAGIC_SQUARES = [
-  { icon: '↕️', label: 'Телепорт (b3↔b6, g3↔g6)', desc: 'Фігура миттєво переміщується на парну клітинку' },
-  { icon: '♻️', label: 'Відродження (d3, d6)',      desc: 'Стійте тут 3 ходи — повернеться остання захоплена фігура' },
-  { icon: '🛡', label: 'Щит (f3, f6)',              desc: 'Фігура отримує щит, що поглинає одну атаку' },
-];
-
-export default function SpellPanel({ spells, yourColor, isYourTurn, pendingSpellId, onCastSpell }: Props) {
   return (
     <div className="flex flex-col gap-3">
-      {/* Spells */}
       <div className="glass rounded-2xl p-4">
         <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">
           Заклинання {yourColor === 'w' ? '⬜' : '⬛'}
         </p>
 
         {pendingSpellId && (
-          <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs text-center">
-            Клікніть на фігуру для застосування
+          <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
+            <span className="flex-1">Клікніть на фігуру-ціль</span>
+            <button onClick={onCancel} className="underline hover:text-amber-100">скасувати</button>
           </div>
         )}
 
@@ -39,7 +34,7 @@ export default function SpellPanel({ spells, yourColor, isYourTurn, pendingSpell
           {spells.map((spell) => {
             const ready = spell.currentCooldown === 0;
             const isPending = pendingSpellId === spell.id;
-            const canCast = isYourTurn && ready && !pendingSpellId;
+            const canCast = isYourTurn && ready && !pendingSpellId && !used;
             const meta = SPELL_META[spell.id];
 
             return (
@@ -57,7 +52,7 @@ export default function SpellPanel({ spells, yourColor, isYourTurn, pendingSpell
                 <span className="text-base flex-shrink-0">{meta?.icon ?? '✦'}</span>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium leading-tight">{spell.name}</div>
-                  <div className="text-slate-500 text-[10px] leading-tight truncate">{meta?.desc}</div>
+                  <div className="text-slate-500 text-[10px] leading-tight">{meta?.desc}</div>
                 </div>
                 {ready ? (
                   <span className="text-emerald-400 text-xs font-semibold flex-shrink-0">готово</span>
@@ -69,25 +64,31 @@ export default function SpellPanel({ spells, yourColor, isYourTurn, pendingSpell
           })}
         </div>
 
-        {!isYourTurn && (
-          <p className="text-xs text-slate-600 text-center mt-2">Заклинання — перед вашим ходом</p>
-        )}
+        <p className="text-[10px] text-slate-600 text-center mt-2">
+          {used ? 'Заклинання на цей хід уже використано' : 'Одне заклинання за хід, перед ходом фігурою'}
+        </p>
       </div>
 
-      {/* Magic squares legend */}
       <div className="glass rounded-2xl p-4">
         <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">Магічні клітинки</p>
         <div className="flex flex-col gap-2">
-          {MAGIC_SQUARES.map((sq) => (
-            <div key={sq.label} className="flex items-start gap-2">
-              <span className="text-sm flex-shrink-0 mt-0.5">{sq.icon}</span>
-              <div>
-                <div className="text-xs text-slate-300 font-medium leading-tight">{sq.label}</div>
-                <div className="text-[10px] text-slate-500 leading-tight">{sq.desc}</div>
-              </div>
-            </div>
-          ))}
+          <Legend icon="🌀" label={`Портали ${data.teleports.a.join('↔')}, ${data.teleports.b.join('↔')}`}
+                  desc="Фігура (не король) миттєво переноситься на парну клітинку. Кожен портал спрацьовує раз." />
+          <Legend icon="♻️" label={`Відродження ${data.rebirthSqs.join(', ')}`}
+                  desc={`Стійте тут 3 свої ходи — повернеться остання втрачена фігура.${rebirth ? ` Зараз: ${rebirth.count}/3 на ${rebirth.sq}.` : ''}${lost.length ? ` Наступна: ${lost[lost.length - 1]}.` : ' Втрат ще немає.'}`} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function Legend({ icon, label, desc }: { icon: string; label: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-sm flex-shrink-0 mt-0.5">{icon}</span>
+      <div>
+        <div className="text-xs text-slate-300 font-medium leading-tight">{label}</div>
+        <div className="text-[10px] text-slate-500 leading-tight">{desc}</div>
       </div>
     </div>
   );

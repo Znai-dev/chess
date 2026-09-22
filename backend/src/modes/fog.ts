@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import { FogData } from './types';
+import { FogData, MoveOption } from './types';
 import { getAttackSquares, findKing } from './helpers';
 
 export function initFogData(): FogData {
@@ -85,4 +85,16 @@ export function getFogStateForPlayer(
       visibleSquares: [...visible],
     },
   };
+}
+
+/** Moves to show the player, computed on the board as they see it (no leaks about hidden pieces). */
+export function computeFogMoves(chess: Chess, color: 'w' | 'b'): MoveOption[] {
+  if (chess.turn() !== color) return [];
+  const visible = computeVisibility(chess, color);
+  const view = new Chess(maskFenForPlayer(chess, color, visible));
+  try {
+    return view.moves({ verbose: true }).map(m => ({ from: m.from, to: m.to, kind: 'normal' as const, capture: !!m.captured }));
+  } catch {
+    return [];
+  }
 }

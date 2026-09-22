@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
-import type { MoveVerbose } from '../types';
+import type { LogEntry } from '../types';
 
 interface Props {
-  history: MoveVerbose[];
+  history: LogEntry[];
 }
 
 export default function MoveHistory({ history }: Props) {
@@ -12,7 +12,7 @@ export default function MoveHistory({ history }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history.length]);
 
-  const pairs: [MoveVerbose, MoveVerbose | undefined][] = [];
+  const pairs: [LogEntry, LogEntry | undefined][] = [];
   for (let i = 0; i < history.length; i += 2) {
     pairs.push([history[i], history[i + 1]]);
   }

@@ -7,46 +7,57 @@ export interface PlayerInfo {
   connected: boolean;
 }
 
-export interface MoveVerbose {
+export interface LogEntry {
   color: Color;
+  san: string;
+}
+
+export type MoveKind = 'normal' | 'rage' | 'knight' | 'teleport';
+export interface MoveOption {
   from: string;
   to: string;
-  piece: string;
-  captured?: string;
-  promotion?: string;
-  flags: string;
-  san: string;
-  lan: string;
-  before: string;
-  after: string;
+  kind: MoveKind;
+  capture: boolean;
 }
+
+export type Pending =
+  | { kind: 'extra_move'; sq: string; color: Color }
+  | { kind: 'shield_break'; attackerSq: string; targetSq: string; candidates: string[]; color: Color }
+  | { kind: 'spell_target'; spellId: string; color: Color }
+  | null;
+
+export type GameEvent =
+  | { type: 'pickup'; sq: string; color: Color; effect: EffectType }
+  | { type: 'extra_move_lost'; sq: string; color: Color }
+  | { type: 'shield_absorb'; at: string; attackerSq: string; color: Color; stayed: boolean }
+  | { type: 'bomb'; at: string; victimSq: string; color: Color }
+  | { type: 'effects_suspended'; color: Color }
+  | { type: 'teleport'; from: string; to: string; color: Color }
+  | { type: 'spell'; spellId: string; target: string; color: Color }
+  | { type: 'rebirth'; sq: string; piece: string; color: Color }
+  | { type: 'magic_teleport'; from: string; to: string; color: Color }
+  | { type: 'thawed'; color: Color }
+  | { type: 'blocked_by_invisible'; color: Color };
 
 // ── Lootbox ──────────────────────────────────────────────────────────────
 
-export interface LootboxEntry {
-  sq: string;
-  id: string;
-}
+export type BuffType = 'extra_move' | 'shield' | 'teleport' | 'rage' | 'knight' | 'bomb';
+export type DebuffType = 'stun' | 'pacifist';
+export type EffectType = BuffType | DebuffType;
 
-export interface PieceBuffClient {
-  type: 'extra_move' | 'shield' | 'teleport' | 'berserk';
+export interface PieceEffect {
+  type: EffectType;
   movesLeft: number;
-  berserkCells?: string[];
-}
-
-export interface PieceDebuffClient {
-  type: 'skip_turn' | 'no_attack';
-  movesLeft: number;
+  fresh: boolean;
+  rageCells?: string[];
 }
 
 export interface LootboxClientData {
-  lootboxes: LootboxEntry[];
-  buffs: Record<string, PieceBuffClient>;
-  debuffs: Record<string, PieceDebuffClient>;
+  lootboxes: { sq: string; id: string }[];
+  effects: Record<string, PieceEffect>;
   halfMoves: number;
-  extraMovePending: { sq: string; color: Color } | null;
-  teleportPending: { sq: string; color: Color } | null;
-  shieldBreakPending: { attackerSq: string; color: Color; candidates: string[] } | null;
+  pending: Pending;
+  effectsSuspended: Color | null;
 }
 
 // ── Fog ──────────────────────────────────────────────────────────────────
@@ -74,6 +85,8 @@ export interface MagicClientData {
   rebirthCounters: { w: { sq: string; count: number } | null; b: { sq: string; count: number } | null };
   spells: { w: MagicSpellClient[]; b: MagicSpellClient[] };
   pendingSpell: { color: Color; spellId: string } | null;
+  spellUsedThisTurn: { w: boolean; b: boolean };
+  thawed: Color | null;
   usedTeleports: string[];
   captured: { w: string[]; b: string[] };
 }
@@ -87,15 +100,17 @@ export interface GameState {
   fen: string;
   turn: Color;
   players: PlayerInfo[];
-  history: MoveVerbose[];
+  history: LogEntry[];
+  captured: { w: string[]; b: string[] };
+  material: { w: number; b: number };
   inCheck: boolean;
   isGameOver: boolean;
-  isCheckmate: boolean;
-  isDraw: boolean;
-  isStalemate: boolean;
-  yourColor: Color | null;
-  lastMove?: { from: string; to: string } | null;
   drawOffer: Color | null;
+  lastMove: { from: string; to: string } | null;
+  legalMoves: MoveOption[];
+  pending: Pending;
+  yourColor: Color | null;
+  events?: GameEvent[];
   // Mode-specific
   lootboxData?: LootboxClientData;
   fogData?: FogClientData;
@@ -103,7 +118,7 @@ export interface GameState {
 }
 
 export interface GameOverEvent {
-  reason: 'checkmate' | 'stalemate' | 'resign' | 'draw-agreement' | 'insufficient-material' | 'threefold-repetition';
+  reason: 'checkmate' | 'stalemate' | 'resign' | 'draw-agreement' | 'insufficient-material' | 'threefold-repetition' | 'draw';
   winner: Color | null;
   loserName?: string;
 }

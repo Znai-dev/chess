@@ -127,3 +127,79 @@
 .in-check {
   animation: checkPulse 1s ease-in-out infinite;
 }
+
+/* ── Turn bar ─────────────────────────────────────────────────────────── */
+.turn-bar {
+  width: min(480px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15, 23, 42, 0.7);
+  color: #cbd5e1;
+  /* two rows tall even without a hint, so the board never jumps when one appears */
+  min-height: 84px;
+  transition: border-color .3s, box-shadow .3s;
+}
+.turn-bar.mine {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.25), 0 0 32px rgba(52,211,153,0.18);
+}
+.turn-bar.waiting { color: #fbbf24; flex-direction: row; align-items: center; gap: 8px; }
+.turn-bar.finished { color: #94a3b8; text-align: center; }
+.turn-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  font-weight: 700; font-size: 0.85rem; letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.turn-pill.mine { background: rgba(16,185,129,0.22); color: #6ee7b7; animation: pillPulse 1.6s ease-in-out infinite; }
+.turn-pill.theirs { background: rgba(51,65,85,0.6); color: #94a3b8; }
+@keyframes pillPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+}
+.check-chip {
+  padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  background: rgba(239,68,68,0.2); color: #fca5a5; animation: pillPulse 1s ease-in-out infinite;
+}
+.turn-btn {
+  padding: 4px 12px; border-radius: 10px; font-size: 0.75rem; white-space: nowrap;
+  background: rgba(51,65,85,0.7); border: 1px solid rgba(100,116,139,0.5); color: #e2e8f0;
+  transition: background .15s;
+}
+.turn-btn:hover { background: rgba(71,85,105,0.9); }
+
+/* Board glow while it is your move */
+.chess-container { transition: box-shadow .35s ease; }
+.chess-container.my-turn {
+  box-shadow:
+    0 0 0 3px rgba(52,211,153,0.55),
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 120px rgba(52,211,153,0.15);
+}
+
+/* ── Board overlays ───────────────────────────────────────────────────── */
+.fog-square { transition: opacity .35s ease; }
+
+.loot-box {
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(0.9rem, 3.2vw, 1.5rem);
+  animation: lootPulse 1.8s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+}
+@keyframes lootPulse {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.12) translateY(-2px); }
+}
+
+.effect-badge {
+  position: absolute; top: 4%; right: 4%;
+  display: flex; align-items: center; gap: 1px;
+  padding: 1px 4px; border-radius: 999px;
+  font-size: clamp(0.45rem, 1.7vw, 0.75rem); line-height: 1.25;
+  color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.effect-badge-count { font-weight: 800; font-size: 0.85em; }

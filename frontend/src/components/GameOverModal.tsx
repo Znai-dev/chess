@@ -16,6 +16,7 @@ const REASON_LABELS: Record<string, string> = {
   'draw-agreement': 'Нічия за домовленістю',
   'insufficient-material': 'Недостатньо матеріалу',
   'threefold-repetition': 'Троєкратне повторення',
+  draw: 'Нічия',
 };
 
 export default function GameOverModal({ event, yourColor, players, onRematch, onHome }: Props) {

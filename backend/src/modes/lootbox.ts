@@ -1,70 +1,33 @@
 import { Chess } from 'chess.js';
 import { v4 as uuid } from 'uuid';
-import { LootboxData, PieceBuff, PieceDebuff, BuffType, DebuffType } from './types';
-import { mirrorSquare, sqToCoords, coordsToSq, getAdjacentSquares, applyCustomMove, pickRandom } from './helpers';
+import {
+  LootboxData, PieceEffect, EffectType, BuffType, Color, MoveOption, GameEvent,
+} from './types';
+import {
+  mirrorSquare, sqToCoords, coordsToSq, getAdjacentSquares, placeCustomMove, customMoveIsSafe,
+  pickRandom, weightedPick, knightSquares, materialOf, setTurn, flipTurn, otherColor,
+} from './helpers';
 
-// Spawn weights: center-biased
-const CENTER_WEIGHT_SQS = new Set(['d4','d5','e4','e5','c4','c5','f4','f5','d3','d6','e3','e6','c3','c6','f3','f6']);
+const MAX_BOXES = 8;
+const SPAWN_EVERY_HALF_MOVES = 2;
+const KING_ALLOWED: EffectType[] = ['extra_move', 'teleport', 'knight'];
+
+const CENTER = new Set(['d4','d5','e4','e5','c4','c5','f4','f5','d3','d6','e3','e6','c3','c6','f3','f6']);
 
 export function initLootboxData(): LootboxData {
-  return {
-    lootboxes: [],
-    buffs: {},
-    debuffs: {},
-    halfMoves: 0,
-    extraMovePending: null,
-    teleportPending: null,
-    shieldBreakPending: null,
-  };
+  return { lootboxes: [], effects: {}, halfMoves: 0, pending: null, effectsSuspended: null };
 }
 
-function randomBuff(sq: string, pieceType: string, chess: Chess): PieceBuff | PieceDebuff {
-  const isDebuff = Math.random() < 0.2;
-  if (isDebuff) {
-    const type: DebuffType = Math.random() < 0.5 ? 'skip_turn' : 'no_attack';
-    return { type, movesLeft: type === 'skip_turn' ? 1 : 2 } as PieceDebuff;
-  }
-  const roll = Math.random();
-  let type: BuffType;
-  if (roll < 0.25) type = 'extra_move';
-  else if (roll < 0.5) type = 'shield';
-  else if (roll < 0.75) type = 'teleport';
-  else type = 'berserk';
+// ─── Spawning ──────────────────────────────────────────────────────────────
 
-  const buff: PieceBuff = { type, movesLeft: type === 'berserk' ? 2 : 1 };
-  if (type === 'berserk') buff.berserkCells = generateBerserkCells(sq, chess);
-  return buff;
-}
-
-function generateBerserkCells(sq: string, chess: Chess): string[] {
-  const [file, rank] = sqToCoords(sq);
-  const piece = chess.get(sq as any);
-  const color = piece?.color ?? 'w';
-  const dir = color === 'w' ? 1 : -1;
-  const candidates: string[] = [];
-  for (let df = -1; df <= 1; df++) {
-    for (let dr = 1; dr <= 3; dr++) {
-      const s = coordsToSq(file + df, rank + dir * dr);
-      if (s) candidates.push(s);
-    }
-  }
-  return pickRandom(candidates, 5);
-}
-
-function isForwardMove(from: string, to: string, color: 'w' | 'b'): boolean {
-  const [, fromRank] = sqToCoords(from);
-  const [, toRank] = sqToCoords(to);
-  return color === 'w' ? toRank > fromRank : toRank < fromRank;
-}
-
-function weightedRandomSquare(occupied: Set<string>, excluded: Set<string>): string | null {
+function weightedRandomSquare(taken: Set<string>): string | null {
   const candidates: { sq: string; weight: number }[] = [];
   for (let f = 0; f < 8; f++) {
-    for (let r = 0; r < 8; r++) {
+    // never on the back ranks: nobody would walk there for a box
+    for (let r = 1; r < 7; r++) {
       const sq = coordsToSq(f, r)!;
-      if (occupied.has(sq) || excluded.has(sq)) continue;
-      const weight = CENTER_WEIGHT_SQS.has(sq) ? 4 : 1;
-      candidates.push({ sq, weight });
+      if (taken.has(sq)) continue;
+      candidates.push({ sq, weight: CENTER.has(sq) ? 4 : 1 });
     }
   }
   if (!candidates.length) return null;
@@ -78,207 +41,349 @@ function weightedRandomSquare(occupied: Set<string>, excluded: Set<string>): str
 }
 
 export function spawnLootboxes(chess: Chess, data: LootboxData): void {
-  if (data.lootboxes.length >= 6) return;
+  if (data.lootboxes.length >= MAX_BOXES) return;
+  const taken = new Set<string>(data.lootboxes.map(l => l.sq));
+  for (const row of chess.board()) for (const sq of row) if (sq) taken.add(sq.square);
 
-  const board = chess.board();
-  const occupied = new Set<string>();
-  for (const row of board) for (const sq of row) if (sq) occupied.add(sq.square);
-  const existingLb = new Set(data.lootboxes.map(l => l.sq));
-
-  const sq1 = weightedRandomSquare(occupied, existingLb);
+  const sq1 = weightedRandomSquare(taken);
   if (!sq1) return;
+  data.lootboxes.push({ sq: sq1, id: uuid().slice(0, 6) });
+  taken.add(sq1);
 
   const mirror = mirrorSquare(sq1);
-  const occupied2 = new Set([...occupied, ...existingLb, sq1]);
-
-  data.lootboxes.push({ sq: sq1, id: uuid().slice(0, 6) });
-
-  if (!occupied2.has(mirror) && data.lootboxes.length < 6) {
+  if (!taken.has(mirror) && data.lootboxes.length < MAX_BOXES) {
     data.lootboxes.push({ sq: mirror, id: uuid().slice(0, 6) });
   }
 }
 
-export type LootboxMoveResult =
-  | { ok: true; needsTarget?: false }
-  | { ok: true; needsTarget: true; type: 'teleport' | 'shield_break'; candidates?: string[] }
+// ─── Loot table ────────────────────────────────────────────────────────────
+
+/** Luck leans a little towards whoever is behind on material. */
+function rollEffect(chess: Chess, color: Color, data?: LootboxData): EffectType {
+  if (data?.forceNext) { const t = data.forceNext; data.forceNext = null; return t; }
+  const diff = materialOf(chess, color) - materialOf(chess, otherColor(color));
+  const debuffChance = Math.min(0.3, Math.max(0.08, 0.2 + diff * 0.02));
+  if (Math.random() < debuffChance) return Math.random() < 0.5 ? 'stun' : 'pacifist';
+
+  const w: Record<BuffType, number> = { extra_move: 1, shield: 1, teleport: 1, rage: 1, knight: 1, bomb: 1 };
+  if (diff < 0) { w.extra_move *= 1.3; w.bomb *= 1.3; w.teleport *= 1.3; }
+  if (diff > 0) { w.shield *= 1.15; w.knight *= 1.15; }
+  return weightedPick(w);
+}
+
+function generateRageCells(sq: string, color: Color): string[] {
+  const [file, rank] = sqToCoords(sq);
+  const dir = color === 'w' ? 1 : -1;
+  const zone: string[] = [];
+  for (let df = -1; df <= 1; df++)
+    for (let dr = 1; dr <= 3; dr++) {
+      const s = coordsToSq(file + df, rank + dir * dr);
+      if (s) zone.push(s);
+    }
+  return pickRandom(zone, 5);
+}
+
+function makeEffect(type: EffectType, sq: string, color: Color): PieceEffect {
+  switch (type) {
+    case 'stun':     return { type, movesLeft: 1, fresh: true };
+    case 'pacifist': return { type, movesLeft: 2, fresh: true };
+    case 'rage':     return { type, movesLeft: 2, fresh: true, rageCells: generateRageCells(sq, color) };
+    case 'knight':   return { type, movesLeft: 2, fresh: true };
+    default:         return { type, movesLeft: 0, fresh: true };
+  }
+}
+
+function isForward(from: string, to: string, color: Color): boolean {
+  const [, fr] = sqToCoords(from);
+  const [, tr] = sqToCoords(to);
+  return color === 'w' ? tr > fr : tr < fr;
+}
+
+/** Taking a bomb burns the taker too: that must not leave the taker's king en prise. */
+function bombCaptureIsSafe(chess: Chess, from: string, to: string, color: Color): boolean {
+  const probe = new Chess(chess.fen());
+  probe.remove(from as any);
+  probe.remove(to as any);
+  setTurn(probe, color);
+  return !probe.inCheck();
+}
+
+function moveEffect(data: LootboxData, from: string, to: string): void {
+  const e = data.effects[from];
+  delete data.effects[to];
+  delete data.effects[from];
+  if (e) data.effects[to] = e;
+}
+
+// ─── Legal moves ───────────────────────────────────────────────────────────
+
+/**
+ * Everything `color` may do right now. Assumes chess.turn() === color.
+ * If the effects leave no move at all, they are ignored (suspended) so the
+ * game can never get stuck.
+ */
+export function computeLootboxMoves(
+  chess: Chess,
+  data: LootboxData,
+  color: Color,
+): { options: MoveOption[]; suspended: boolean } {
+  const pending = data.pending;
+  if (pending?.kind === 'shield_break') {
+    return {
+      options: pending.candidates.map(to => ({ from: pending.attackerSq, to, kind: 'normal' as const, capture: false })),
+      suspended: false,
+    };
+  }
+  const restrictFrom = pending?.kind === 'extra_move' ? pending.sq : null;
+
+  const base = chess.moves({ verbose: true }).filter(m => {
+    if (restrictFrom && m.from !== restrictFrom) return false;
+    if (chess.get(m.to as any)?.type === 'k') return false; // extra move while the enemy is in check
+    return true;
+  });
+
+  const build = (restricted: boolean): MoveOption[] => {
+    const out: MoveOption[] = [];
+    const seen = new Set<string>();
+    const push = (o: MoveOption) => {
+      const key = o.from + o.to;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(o);
+    };
+
+    for (const m of base) {
+      const eff = data.effects[m.from];
+      if (restricted && eff && !eff.fresh) {
+        if (eff.type === 'stun') continue;
+        if (eff.type === 'pacifist' && m.captured) continue;
+        if (eff.type === 'rage' && !isForward(m.from, m.to, color)) continue;
+      }
+      if (m.captured && data.effects[m.to]?.type === 'bomb') {
+        if (m.piece === 'k' || !bombCaptureIsSafe(chess, m.from, m.to, color)) continue;
+      }
+      push({ from: m.from, to: m.to, kind: 'normal', capture: !!m.captured });
+    }
+
+    for (const [sq, eff] of Object.entries(data.effects)) {
+      if (eff.fresh) continue;
+      if (restrictFrom && sq !== restrictFrom) continue;
+      const piece = chess.get(sq as any);
+      if (!piece || piece.color !== color) continue;
+      // a pawn may never end up on its own first rank: chess.js rejects the position
+      const homeRank = color === 'w' ? '1' : '8';
+      const pawnOk = (to: string) => piece.type !== 'p' || to[1] !== homeRank;
+
+      const jumpTargets =
+        eff.type === 'rage' ? (eff.rageCells ?? []) :
+        eff.type === 'knight' ? knightSquares(sq) : [];
+      for (const to of jumpTargets) {
+        if (!pawnOk(to)) continue;
+        const target = chess.get(to as any);
+        if (target && (target.color === color || target.type === 'k')) continue;
+        if (target && data.effects[to]?.type === 'bomb') {
+          if (piece.type === 'k' || !bombCaptureIsSafe(chess, sq, to, color)) continue;
+        }
+        if (!customMoveIsSafe(chess, sq, to, color)) continue;
+        push({ from: sq, to, kind: eff.type as 'rage' | 'knight', capture: !!target });
+      }
+
+      if (eff.type === 'teleport') {
+        for (let f = 0; f < 8; f++)
+          for (let r = 0; r < 8; r++) {
+            const to = coordsToSq(f, r)!;
+            if (chess.get(to as any) || to === sq || !pawnOk(to)) continue;
+            if (!customMoveIsSafe(chess, sq, to, color)) continue;
+            push({ from: sq, to, kind: 'teleport', capture: false });
+          }
+      }
+    }
+    return out;
+  };
+
+  let options = build(true);
+  let suspended = false;
+  if (options.length === 0) {
+    const free = build(false);
+    if (free.length) { options = free; suspended = true; }
+  }
+  return { options, suspended };
+}
+
+// ─── Applying a move ───────────────────────────────────────────────────────
+
+export type ApplyResult =
+  | { ok: true; events: GameEvent[]; lastMove: { from: string; to: string } | null }
   | { ok: false; reason: string };
 
-export function handleLootboxMove(
+export function applyLootboxMove(
   chess: Chess,
   data: LootboxData,
   move: { from: string; to: string; promotion?: string },
-  color: 'w' | 'b'
-): LootboxMoveResult {
-  const { from, to } = move;
-  let isExtraMove = false;
+  color: Color,
+): ApplyResult {
+  const { options } = computeLootboxMoves(chess, data, color);
+  const opt = options.find(o => o.from === move.from && o.to === move.to);
+  if (!opt) return { ok: false, reason: 'Недозволений хід' };
 
-  // ── Handle pending extra move ──────────────────────────────────────────
-  if (data.extraMovePending) {
-    if (data.extraMovePending.color !== color) return { ok: false, reason: 'Not your turn (extra move pending for opponent)' };
-    if (data.extraMovePending.sq !== from) return { ok: false, reason: 'Must use extra move with the buffed piece' };
-    // Forbid capturing the king with extra move
-    const target = chess.get(to as any);
-    if (target?.type === 'k') return { ok: false, reason: 'Extra move cannot capture the king' };
-    data.extraMovePending = null;
-    isExtraMove = true;
-    // fall through to normal move processing
+  const events: GameEvent[] = [];
+  const pending = data.pending;
+  const isExtra = pending?.kind === 'extra_move';
+
+  // Landing after a shield absorbed the attack
+  if (pending?.kind === 'shield_break') {
+    placeCustomMove(chess, pending.attackerSq, move.to);
+    moveEffect(data, pending.attackerSq, move.to);
+    data.pending = null;
+    flipTurn(chess);
+    return finishTurn(chess, data, move.to, color, events, isExtra, { from: pending.attackerSq, to: move.to });
   }
+  data.pending = null;
 
-  // ── Handle pending teleport ────────────────────────────────────────────
-  if (data.teleportPending) {
-    if (data.teleportPending.color !== color) return { ok: false, reason: 'Not your turn' };
-    if (data.teleportPending.sq !== from) return { ok: false, reason: 'Use teleport with the buffed piece' };
+  const target = chess.get(move.to as any);
+  const targetEff = target ? data.effects[move.to] : undefined;
 
-    const targetPiece = chess.get(to as any);
-    if (targetPiece) return { ok: false, reason: 'Teleport destination must be empty' };
-
-    // Teleport: move piece manually
-    applyCustomMove(chess, from, to, false);
-    transferBuff(data, from, to);
-    data.teleportPending = null;
-    data.halfMoves++;
-    onMoveDone(chess, data, to, color);
-    return { ok: true };
-  }
-
-  // ── Handle pending shield break landing ───────────────────────────────
-  if (data.shieldBreakPending) {
-    if (data.shieldBreakPending.color !== color) return { ok: false, reason: 'Not your turn' };
-    if (!data.shieldBreakPending.candidates.includes(to)) return { ok: false, reason: 'Choose a valid adjacent square' };
-
-    const attackerSq = data.shieldBreakPending.attackerSq;
-    applyCustomMove(chess, attackerSq, to, false);
-    transferBuff(data, attackerSq, to);
-    data.shieldBreakPending = null;
-    data.halfMoves++;
-    onMoveDone(chess, data, to, color);
-    return { ok: true };
-  }
-
-  // ── Debuff checks ──────────────────────────────────────────────────────
-  const debuff = data.debuffs[from];
-  if (debuff) {
-    if (debuff.type === 'skip_turn') return { ok: false, reason: 'Piece is stunned (skip turn)' };
-    if (debuff.type === 'no_attack') {
-      const targetPiece = chess.get(to as any);
-      if (targetPiece && targetPiece.color !== color) return { ok: false, reason: 'Piece cannot attack this turn' };
+  // Shield: absorbs the capture. Not while the attacker is in check - the
+  // check must stay resolvable, otherwise the game could lock up.
+  if (target && targetEff?.type === 'shield' && !chess.inCheck()) {
+    delete data.effects[move.to];
+    const candidates = getAdjacentSquares(move.to)
+      .filter(s => !chess.get(s as any))
+      .filter(s => customMoveIsSafe(chess, move.from, s, color));
+    if (candidates.length === 0) {
+      events.push({ type: 'shield_absorb', at: move.to, attackerSq: move.from, color, stayed: true });
+      flipTurn(chess);
+      return finishTurn(chess, data, null, color, events, isExtra, null);
     }
+    data.pending = { kind: 'shield_break', attackerSq: move.from, targetSq: move.to, candidates, color };
+    events.push({ type: 'shield_absorb', at: move.to, attackerSq: move.from, color, stayed: false });
+    return { ok: true, events, lastMove: null };
   }
 
-  // ── Berserk movement check ─────────────────────────────────────────────
-  const buff = data.buffs[from];
-  if (buff?.type === 'berserk') {
-    const isForward = isForwardMove(from, to, color);
-    const inBerserkCells = buff.berserkCells?.includes(to) ?? false;
-    if (!isForward && !inBerserkCells) return { ok: false, reason: 'Berserk: must move forward or to berserk cells' };
+  const bomb = !!target && targetEff?.type === 'bomb';
+
+  if (opt.kind === 'normal') {
+    let res;
+    try { res = chess.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' }); }
+    catch { res = null; }
+    if (!res) return { ok: false, reason: 'Недозволений хід' };
+  } else {
+    placeCustomMove(chess, move.from, move.to);
+    flipTurn(chess);
   }
 
-  // ── Shield intercept ───────────────────────────────────────────────────
-  const targetPiece = chess.get(to as any);
-  if (targetPiece && targetPiece.color !== color) {
-    const targetBuff = data.buffs[to];
-    if (targetBuff?.type === 'shield' && targetPiece.type !== 'k') {
-      // Shield triggers: remove shield, find landing squares for attacker
-      delete data.buffs[to];
-      const candidates = getAdjacentSquares(to).filter(sq => !chess.get(sq as any));
-      data.shieldBreakPending = { attackerSq: from, color, candidates };
-      return { ok: true, needsTarget: true, type: 'shield_break', candidates };
-    }
+  if (bomb) {
+    chess.remove(move.to as any);
+    delete data.effects[move.from];
+    delete data.effects[move.to];
+    events.push({ type: 'bomb', at: move.to, victimSq: move.from, color });
+    return finishTurn(chess, data, null, color, events, isExtra, { from: move.from, to: move.to });
   }
 
-  // ── Normal move ────────────────────────────────────────────────────────
-  try {
-    const result = chess.move({ from, to, promotion: move.promotion || 'q' });
-    if (!result) return { ok: false, reason: 'Invalid move' };
-  } catch {
-    return { ok: false, reason: 'Invalid move' };
+  moveEffect(data, move.from, move.to);
+  const eff = data.effects[move.to];
+  if (opt.kind === 'teleport') {
+    delete data.effects[move.to];
+    events.push({ type: 'teleport', from: move.from, to: move.to, color });
+  } else if (eff && (eff.type === 'rage' || eff.type === 'knight') && !eff.fresh) {
+    eff.movesLeft--;
+    if (eff.movesLeft <= 0) delete data.effects[move.to];
+    else if (eff.type === 'rage') eff.rageCells = generateRageCells(move.to, color);
   }
 
-  // Transfer buff/debuff from source to destination
-  const hadBuff = !!data.buffs[from];
-  const hadDebuff = !!data.debuffs[from];
-  transferBuff(data, from, to);
-  transferDebuff(data, from, to);
-  // If mover had no buff/debuff, remove captured piece's buff/debuff at destination
-  if (!hadBuff) delete data.buffs[to];
-  if (!hadDebuff) delete data.debuffs[to];
-
-  data.halfMoves++;
-  onMoveDone(chess, data, to, color, isExtraMove);
-  return { ok: true };
+  return finishTurn(chess, data, move.to, color, events, isExtra, { from: move.from, to: move.to });
 }
 
-function transferBuff(data: LootboxData, from: string, to: string): void {
-  if (data.buffs[from]) {
-    data.buffs[to] = data.buffs[from];
-    delete data.buffs[from];
-  }
-}
-
-function transferDebuff(data: LootboxData, from: string, to: string): void {
-  if (data.debuffs[from]) {
-    data.debuffs[to] = data.debuffs[from];
-    delete data.debuffs[from];
-  }
-}
-
-function onMoveDone(chess: Chess, data: LootboxData, landedSq: string, color: 'w' | 'b', isExtraMove = false): void {
-  // Pick up lootbox if landed on one
-  const lbIdx = data.lootboxes.findIndex(l => l.sq === landedSq);
-  if (lbIdx !== -1) {
-    data.lootboxes.splice(lbIdx, 1);
+/** Pick up a box on the landing square, then hand the turn over (or keep it for an extra move). */
+function finishTurn(
+  chess: Chess,
+  data: LootboxData,
+  landedSq: string | null,
+  color: Color,
+  events: GameEvent[],
+  isExtra: boolean,
+  lastMove: { from: string; to: string } | null,
+): ApplyResult {
+  if (landedSq) {
+    const idx = data.lootboxes.findIndex(l => l.sq === landedSq);
     const piece = chess.get(landedSq as any);
-    const newEffect = randomBuff(landedSq, piece?.type ?? 'p', chess);
+    if (idx !== -1 && piece) {
+      data.lootboxes.splice(idx, 1);
+      let type = rollEffect(chess, color, data);
+      if (piece.type === 'k' && !KING_ALLOWED.includes(type)) type = pickRandom(KING_ALLOWED, 1)[0];
+      events.push({ type: 'pickup', sq: landedSq, color, effect: type });
 
-    if ((newEffect as PieceDebuff).type === 'skip_turn' || (newEffect as PieceDebuff).type === 'no_attack') {
-      // It's a debuff
-      data.debuffs[landedSq] = newEffect as PieceDebuff;
-      // Also remove existing buff
-      delete data.buffs[landedSq];
-    } else {
-      const b = newEffect as PieceBuff;
-      // Shield doesn't work for king
-      if (b.type === 'shield' && piece?.type === 'k') {
-        // Give extra move instead
-        data.buffs[landedSq] = { type: 'extra_move', movesLeft: 1 };
+      if (type === 'extra_move') {
+        delete data.effects[landedSq];
+        if (!isExtra) {
+          setTurn(chess, color);
+          data.pending = { kind: 'extra_move', sq: landedSq, color };
+          if (computeLootboxMoves(chess, data, color).options.length > 0) {
+            return { ok: true, events, lastMove };
+          }
+          data.pending = null;
+          setTurn(chess, otherColor(color));
+        }
+        events.push({ type: 'extra_move_lost', sq: landedSq, color });
       } else {
-        data.buffs[landedSq] = b;
-        delete data.debuffs[landedSq];
+        data.effects[landedSq] = makeEffect(type, landedSq, color);
       }
     }
   }
 
-  // Tick debuffs
-  for (const sq of Object.keys(data.debuffs)) {
-    data.debuffs[sq].movesLeft--;
-    if (data.debuffs[sq].movesLeft <= 0) delete data.debuffs[sq];
-  }
-
-  // Tick berserk
-  const buff = data.buffs[landedSq];
-  if (buff?.type === 'berserk') {
-    buff.movesLeft--;
-    if (buff.movesLeft <= 0) delete data.buffs[landedSq];
-  }
-
-  // Check extra move — not allowed to chain from another extra move
-  const activeBuff = data.buffs[landedSq];
-  if (activeBuff?.type === 'extra_move' && !data.extraMovePending && !isExtraMove) {
-    data.extraMovePending = { sq: landedSq, color };
-    delete data.buffs[landedSq];
-  }
-
-  // Check teleport pending
-  if (activeBuff?.type === 'teleport') {
-    data.teleportPending = { sq: landedSq, color };
-    delete data.buffs[landedSq];
-  }
-
-  // Spawn lootboxes every 3 half-moves
-  if (data.halfMoves % 3 === 0) spawnLootboxes(chess, data);
+  endOfTurn(chess, data, color);
+  return { ok: true, events, lastMove };
 }
 
-export function tickTurnStart(data: LootboxData, color: 'w' | 'b'): void {
-  // Called at the start of a player's turn to pre-process skip
-  // (skip_turn is checked during move processing)
+function endOfTurn(chess: Chess, data: LootboxData, color: Color): void {
+  for (const [sq, eff] of Object.entries(data.effects)) {
+    const p = chess.get(sq as any);
+    if (!p) { delete data.effects[sq]; continue; } // piece is gone (en passant, castling rook)
+    if (p.color !== color) continue;
+    if (eff.fresh) { eff.fresh = false; continue; }
+    if (eff.type === 'stun' || eff.type === 'pacifist') {
+      eff.movesLeft--;
+      if (eff.movesLeft <= 0) delete data.effects[sq];
+    }
+  }
+  data.effectsSuspended = null;
+  data.halfMoves++;
+  if (data.halfMoves % SPAWN_EVERY_HALF_MOVES === 0) spawnLootboxes(chess, data);
+}
+
+/** Skip a pending extra move: the turn simply passes. */
+export function skipExtraMove(chess: Chess, data: LootboxData, color: Color): boolean {
+  if (data.pending?.kind !== 'extra_move' || data.pending.color !== color) return false;
+  data.pending = null;
+  setTurn(chess, otherColor(color));
+  endOfTurn(chess, data, color);
+  return true;
+}
+
+export function serializeLootboxData(data: LootboxData) {
+  return {
+    lootboxes: data.lootboxes,
+    effects: data.effects,
+    halfMoves: data.halfMoves,
+    pending: data.pending,
+    effectsSuspended: data.effectsSuspended,
+  };
+}
+
+/** Dev-only knobs for testing the UI without waiting for luck. */
+export function debugLootbox(
+  chess: Chess,
+  data: LootboxData,
+  cmd: { box?: string; effect?: { sq: string; type: EffectType }; forceNext?: EffectType },
+): void {
+  if (cmd.box && !chess.get(cmd.box as any) && !data.lootboxes.some(l => l.sq === cmd.box)) {
+    data.lootboxes.push({ sq: cmd.box, id: uuid().slice(0, 6) });
+  }
+  if (cmd.effect) {
+    const piece = chess.get(cmd.effect.sq as any);
+    if (piece) {
+      data.effects[cmd.effect.sq] = { ...makeEffect(cmd.effect.type, cmd.effect.sq, piece.color), fresh: false };
+    }
+  }
+  if (cmd.forceNext) data.forceNext = cmd.forceNext;
 }

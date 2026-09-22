@@ -7,7 +7,7 @@ import { BASE } from '../base';
 
 const MODES: { id: GameMode; icon: string; title: string; desc: string }[] = [
   { id: 'classic',  icon: '♟',  title: 'Класичні шахи',  desc: 'Стандартні правила без змін' },
-  { id: 'lootbox',  icon: '📦', title: 'Лутбокси',        desc: 'Збирай скрині для бафів та дебафів' },
+  { id: 'lootbox',  icon: '📦', title: 'Лутбокси',        desc: 'Скрині: лють, бомби, телепорт, щити…' },
   { id: 'fog',      icon: '🌫️', title: 'Туман війни',     desc: 'Обмежена видимість поля бою' },
   { id: 'magic',    icon: '✨', title: 'Магічні шахи',    desc: 'Заклинання та магічні клітинки' },
 ];
