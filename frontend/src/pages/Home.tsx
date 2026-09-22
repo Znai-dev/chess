@@ -2,19 +2,50 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import type { GameMode } from '../types';
+import { BASE } from '../base';
+
+const MODES: { id: GameMode; icon: string; title: string; desc: string }[] = [
+  { id: 'classic',  icon: '♟',  title: 'Класичні шахи',  desc: 'Стандартні правила без змін' },
+  { id: 'lootbox',  icon: '📦', title: 'Лутбокси',        desc: 'Збирай скрині для бафів та дебафів' },
+  { id: 'fog',      icon: '🌫️', title: 'Туман війни',     desc: 'Обмежена видимість поля бою' },
+  { id: 'magic',    icon: '✨', title: 'Магічні шахи',    desc: 'Заклинання та магічні клітинки' },
+];
+
+const ADJECTIVES = [
+  'Лютий', 'Сонний', 'Голодний', 'Шалений', 'Мудрий', 'Хитрий', 'Дикий', 'Ледачий',
+  'Гучний', 'Тихий', 'Смілий', 'Рандомний', 'Космічний', 'Бойовий', 'Пухнастий',
+  'Залізний', 'Мокрий', 'Розлючений', 'Веселий', 'Сердитий', 'Загадковий', 'Безстрашний',
+];
+
+const NOUNS = [
+  'Бобер', 'Гусак', 'Кабан', 'Хом\'як', 'Єнот', 'Тигр', 'Їжак', 'Пінгвін',
+  'Дракон', 'Кіт', 'Собака', 'Папуга', 'Краб', 'Жираф', 'Пінгвін', 'Мамонт',
+  'Огірок', 'Ведмідь', 'Лось', 'Акула', 'Скунс', 'Лінивець', 'Страус',
+];
+
+function randomName() {
+  const adj  = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return `${adj} ${noun}`;
+}
 
 export default function Home() {
-  const [name, setName] = useState('');
+  const [name, setName]       = useState(randomName);
+  const [mode, setMode]       = useState<GameMode>('classic');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   async function createGame() {
-    if (!name.trim()) { toast.error('Введіть своє ім\'я'); return; }
     setLoading(true);
     try {
-      const res = await fetch('/api/rooms', { method: 'POST' });
+      const res = await fetch(`${BASE}/api/rooms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
       const { roomId } = await res.json();
-      sessionStorage.setItem('playerName', name.trim());
+      sessionStorage.setItem('playerName', name);
       navigate(`/game/${roomId}`);
     } catch {
       toast.error('Не вдалося створити гру');
@@ -30,34 +61,54 @@ export default function Home() {
         <motion.div
           initial={{ opacity: 0, y: -30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
+          transition={{ duration: 0.5 }}
+          className="text-center mb-8"
         >
-          <div className="text-7xl mb-4 select-none">♟</div>
-          <h1 className="text-4xl font-bold tracking-tight text-white mb-2">
+          <div className="text-7xl mb-3 select-none">♟</div>
+          <h1 className="text-4xl font-bold tracking-tight text-white mb-1">
             Chess <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">Online</span>
           </h1>
           <p className="text-slate-400 text-sm">Запроси друга та зіграй партію</p>
         </motion.div>
 
-        {/* Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="glass rounded-2xl p-8"
+          transition={{ duration: 0.4, delay: 0.15 }}
+          className="glass rounded-2xl p-6"
         >
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-300 mb-2">Ваше ім'я</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && createGame()}
-              placeholder="Введіть ім'я..."
-              maxLength={20}
-              className="w-full px-4 py-3 rounded-xl bg-slate-800/70 border border-slate-700/60 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/70 focus:ring-1 focus:ring-indigo-500/40 transition-all"
-            />
+          {/* Random name badge */}
+          <div className="flex items-center justify-between mb-5 px-1">
+            <span className="text-slate-400 text-sm">Ваше ім'я:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-white font-semibold text-sm">{name}</span>
+              <button
+                onClick={() => setName(randomName())}
+                title="Нове ім'я"
+                className="text-slate-400 hover:text-indigo-400 transition-colors text-base leading-none"
+              >
+                🎲
+              </button>
+            </div>
+          </div>
+
+          {/* Mode grid */}
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={`rounded-xl p-3 text-left transition-all border-2 ${
+                  mode === m.id
+                    ? 'border-indigo-500 bg-indigo-500/20'
+                    : 'border-slate-700/60 bg-slate-800/40 hover:border-slate-600 hover:bg-slate-700/40'
+                }`}
+              >
+                <div className="text-2xl mb-1">{m.icon}</div>
+                <div className="text-white text-xs font-semibold leading-tight">{m.title}</div>
+                <div className="text-slate-400 text-xs mt-0.5 leading-tight">{m.desc}</div>
+              </button>
+            ))}
           </div>
 
           <button
@@ -73,34 +124,8 @@ export default function Home() {
                 </svg>
                 Створення...
               </span>
-            ) : '♟ Створити гру'}
+            ) : `${MODES.find(m => m.id === mode)?.icon} Створити гру`}
           </button>
-
-          <div className="mt-6 pt-6 border-t border-slate-700/50">
-            <p className="text-xs text-slate-500 text-center leading-relaxed">
-              Після створення ви отримаєте посилання, яке можна надіслати другу.
-              Перший гравець грає білими, другий — чорними.
-            </p>
-          </div>
-        </motion.div>
-
-        {/* Features */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="mt-8 grid grid-cols-3 gap-3 text-center"
-        >
-          {[
-            { icon: '⚡', label: 'Real-time' },
-            { icon: '🎨', label: 'Сучасний UI' },
-            { icon: '📱', label: 'Будь-який пристрій' },
-          ].map((f) => (
-            <div key={f.label} className="glass rounded-xl py-3 px-2">
-              <div className="text-xl mb-1">{f.icon}</div>
-              <div className="text-xs text-slate-400">{f.label}</div>
-            </div>
-          ))}
         </motion.div>
       </div>
     </div>

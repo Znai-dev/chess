@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { BASE } from '../base';
 
 interface Props {
   roomId: string;
@@ -10,7 +11,7 @@ interface Props {
 
 export default function ShareModal({ roomId, onClose, waitingForOpponent }: Props) {
   const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}/game/${roomId}`;
+  const link = `${window.location.origin}${BASE}/game/${roomId}`;
 
   async function copyLink() {
     try {
