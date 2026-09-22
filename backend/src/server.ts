@@ -13,6 +13,10 @@ import {
   initMagicData, handleMagicPostMove, castSpell, cancelSpell, applySpellWithTarget,
   checkMagicPreMove, serializeMagicData, maskedFenFor, computeMagicMoves, thawIfStuck,
 } from './modes/magic';
+import {
+  ExpandData, initExpandData, legalExpandMoves, applyExpandMove, serializeExpand,
+  expandMaterial, inCheck as expandInCheck,
+} from './modes/expand';
 import { flipTurn, otherColor, capturedPieces, materialOf } from './modes/helpers';
 
 interface Player {
@@ -34,6 +38,7 @@ interface Room {
   lootboxData: LootboxData | null;
   fogData: FogData | null;
   magicData: MagicData | null;
+  expandData: ExpandData | null;
   /** chess.js forgets its history whenever we rewrite the FEN, so we keep our own */
   log: LogEntry[];
   lastMove: { from: string; to: string } | null;
@@ -56,6 +61,7 @@ const GLYPH: Record<string, string> = { p: '♟', n: '♞', b: '♝', r: '♜', 
 
 /** Whose turn it really is: a pending action belongs to its owner even if chess.js disagrees. */
 function activeColor(room: Room): Color {
+  if (room.mode === 'expand') return room.expandData?.turn ?? 'w';
   if (room.mode === 'lootbox' && room.lootboxData?.pending) return room.lootboxData.pending.color;
   return room.game.turn();
 }
@@ -63,6 +69,8 @@ function activeColor(room: Room): Color {
 function legalMovesFor(room: Room, color: Color): MoveOption[] {
   if (room.status !== 'playing' || activeColor(room) !== color) return [];
   switch (room.mode) {
+    case 'expand':
+      return legalExpandMoves(room.expandData!, color);
     case 'lootbox':
       return computeLootboxMoves(room.game, room.lootboxData!, color).options;
     case 'fog':
@@ -83,6 +91,7 @@ function pendingFor(room: Room): Pending | { kind: 'spell_target'; spellId: stri
 }
 
 function buildState(room: Room, color: Color | null) {
+  if (room.mode === 'expand') return buildExpandState(room, color);
   const game = room.game;
   const base = {
     id: room.id,
@@ -118,6 +127,31 @@ function buildState(room: Room, color: Color | null) {
   return base;
 }
 
+/** Expansion mode owns its board, so it builds its state without chess.js. */
+function buildExpandState(room: Room, color: Color | null) {
+  // A room that nobody has joined yet has no mode data; show the starting map.
+  const d = room.expandData ?? initExpandData();
+  return {
+    id: room.id,
+    status: room.status,
+    mode: room.mode,
+    fen: '',
+    turn: d.turn,
+    players: room.players.map((p) => ({ name: p.name, color: p.color, connected: p.connected })),
+    history: room.log,
+    captured: { w: d.taken.w as string[], b: d.taken.b as string[] },
+    material: expandMaterial(d),
+    inCheck: expandInCheck(d, d.turn),
+    isGameOver: room.status === 'finished',
+    drawOffer: room.drawOffer,
+    lastMove: room.lastMove,
+    legalMoves: color ? legalMovesFor(room, color) : [],
+    pending: null,
+    yourColor: color,
+    expandData: serializeExpand(d),
+  };
+}
+
 function emitState(room: Room, event: string, extra: object = {}) {
   const playerSockets: string[] = [];
   for (const p of room.players) {
@@ -128,8 +162,10 @@ function emitState(room: Room, event: string, extra: object = {}) {
 }
 
 function initModeData(room: Room) {
-  room.lootboxData = null; room.fogData = null; room.magicData = null;
-  if (room.mode === 'lootbox') {
+  room.lootboxData = null; room.fogData = null; room.magicData = null; room.expandData = null;
+  if (room.mode === 'expand') {
+    room.expandData = initExpandData();
+  } else if (room.mode === 'lootbox') {
     room.lootboxData = initLootboxData();
     spawnLootboxes(room.game, room.lootboxData);
     spawnLootboxes(room.game, room.lootboxData);
@@ -146,7 +182,14 @@ function afterChange(room: Room, events: GameEvent[]) {
   const game = room.game;
   let over: { reason: string; winner: Color | null } | null = null;
 
-  if (room.mode === 'lootbox') {
+  if (room.mode === 'expand') {
+    const d = room.expandData!;
+    if (legalExpandMoves(d, d.turn).length === 0) {
+      over = expandInCheck(d, d.turn)
+        ? { reason: 'checkmate', winner: otherColor(d.turn) }
+        : { reason: 'stalemate', winner: null };
+    }
+  } else if (room.mode === 'lootbox') {
     const data = room.lootboxData!;
     const next = activeColor(room);
     const { options, suspended } = computeLootboxMoves(game, data, next);
@@ -191,9 +234,9 @@ function lootboxLabel(room: Room, move: { from: string; to: string }, kind: stri
 // ── REST ───────────────────────────────────────────────────────────────────
 
 app.post('/api/rooms', (req, res) => {
-  const mode: GameMode = req.body?.mode ?? 'classic';
+  const mode: GameMode = req.body?.mode ?? 'expand';
   const roomId = uuidv4().slice(0, 8).toUpperCase();
-  rooms.set(roomId, {
+  const room: Room = {
     id: roomId,
     game: new Chess(),
     players: [],
@@ -203,9 +246,12 @@ app.post('/api/rooms', (req, res) => {
     lootboxData: null,
     fogData: null,
     magicData: null,
+    expandData: null,
     log: [],
     lastMove: null,
-  });
+  };
+  rooms.set(roomId, room);
+  initModeData(room);   // so a half-joined room always has a consistent state
   res.json({ roomId, mode });
 });
 
@@ -280,11 +326,22 @@ io.on('connection', (socket) => {
     const color = player.color;
     if (activeColor(room) !== color) { rejectMove(socket, room, color, 'Не ваш хід'); return; }
 
-    // ── Classic / Fog ──────────────────────────────────────────────────────
-    if (room.mode === 'classic' || room.mode === 'fog') {
+    // ── Expansion ──────────────────────────────────────────────────────────
+    if (room.mode === 'expand') {
+      const res = applyExpandMove(room.expandData!, move.from, move.to);
+      if (!res.ok) { rejectMove(socket, room, color, res.reason); return; }
+      room.log.push({ color, san: res.san });
+      room.lastMove = room.expandData!.lastMove;
+      room.drawOffer = null;
+      afterChange(room, res.events);
+      return;
+    }
+
+    // ── Fog ────────────────────────────────────────────────────────────────
+    if (room.mode === 'fog') {
       let result;
       try { result = room.game.move(move); } catch { result = null; }
-      if (!result) { rejectMove(socket, room, color, room.mode === 'fog' ? 'Хід неможливий — щось у тумані' : 'Недозволений хід'); return; }
+      if (!result) { rejectMove(socket, room, color, 'Хід неможливий — щось у тумані'); return; }
       room.log.push({ color, san: result.san });
       room.lastMove = { from: result.from, to: result.to };
       room.drawOffer = null;

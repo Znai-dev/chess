@@ -66,6 +66,12 @@ export default function TurnBar({ state, yourColor, spellName, onSkipExtraMove, 
           {spectator ? (state.turn === 'w' ? 'Хід білих' : 'Хід чорних') : myTurn ? 'ВАШ ХІД' : 'Хід суперника'}
         </span>
         {state.inCheck && <span className="check-chip">⚠️ Шах!</span>}
+        {state.expandData && (
+          <span className="map-chip" title="Розмір карти та скільки ходів до наступного розширення">
+            🗺️ {state.expandData.size}×{state.expandData.size}
+            {state.expandData.nextIn > 0 && <b className="ml-1 text-slate-300">+{state.expandData.nextIn}</b>}
+          </span>
+        )}
         <span className="ml-auto text-xs text-slate-500 flex-shrink-0">Хід {Math.floor(state.history.length / 2) + 1}</span>
       </div>
       {(hint || action) && (

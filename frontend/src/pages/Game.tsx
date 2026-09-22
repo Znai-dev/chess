@@ -13,9 +13,11 @@ import GameOverModal from '../components/GameOverModal';
 import ShareModal from '../components/ShareModal';
 import SpellPanel from '../components/SpellPanel';
 import LootPanel from '../components/LootPanel';
+import BigBoard from '../components/BigBoard';
+import ExpandPanel from '../components/ExpandPanel';
 import TurnBar from '../components/TurnBar';
 
-const MODE_LABEL: Record<string, string> = { lootbox: '📦 Лутбокси', fog: '🌫️ Туман', magic: '✨ Магія' };
+const MODE_LABEL: Record<string, string> = { expand: '🗺️ Експансія', lootbox: '📦 Лутбокси', fog: '🌫️ Туман', magic: '✨ Магія' };
 
 export default function Game() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -109,6 +111,27 @@ export default function Game() {
           break;
         case 'blocked_by_invisible':
           break;
+        case 'expand':
+          toast(
+            <div className="flex flex-col gap-0.5">
+              <span>Карта розрослася до <b>{e.size}×{e.size}</b></span>
+              <span className="text-xs text-slate-400">Відкрито: <b>{e.zone}</b> · нових фігур: {e.pieces}</span>
+            </div>,
+            { icon: '🗺️', duration: 5000 },
+          );
+          break;
+        case 'portal_jump':
+          flash(e.to, '🌀', 'buff');
+          toast(`🌀 Портал: ${e.from} → ${e.to}`, { duration: 3000 });
+          break;
+        case 'promote':
+          flash(e.sq, '♛', 'buff', 'ферзь');
+          toast(`♛ ${who(e.color)}: пішак пройшов у ферзі на ${e.sq}`, { duration: 4000 });
+          break;
+        case 'treasure':
+          flash(e.sq, '💎', 'buff', 'підвищення');
+          toast(`💎 ${who(e.color)}: скарб на ${e.sq} підвищив фігуру`, { duration: 4000 });
+          break;
       }
     }
   }, [flash, who]);
@@ -187,7 +210,7 @@ export default function Game() {
   }, [roomId, playerName, navigate, handleEvents]);
 
   // ── Derived view state ────────────────────────────────────────────────────
-  const mode = gameState?.mode ?? 'classic';
+  const mode = gameState?.mode ?? 'expand';
   const isSpectator = yourColor === null;
   const playing = gameState?.status === 'playing';
   const myTurn = !!gameState && playing && !isSpectator && gameState.turn === yourColor;
@@ -195,6 +218,7 @@ export default function Game() {
   const myPending = pending && pending.color === yourColor ? pending : null;
   const lb = gameState?.lootboxData;
   const md = gameState?.magicData;
+  const ex = gameState?.expandData;
 
   // Tab title: the cheapest "it's your move" signal there is
   useEffect(() => {
@@ -204,6 +228,7 @@ export default function Game() {
 
   const checkSquare = useMemo(() => {
     if (!gameState?.inCheck) return null;
+    if (gameState.mode === 'expand') return null;   // the big board marks its own king
     try {
       const c = new Chess(gameState.fen);
       for (const row of c.board()) for (const sq of row) if (sq?.type === 'k' && sq.color === gameState.turn) return sq.square;
@@ -360,7 +385,7 @@ export default function Game() {
             ← На головну
           </button>
           <div className="flex items-center gap-2">
-            {mode !== 'classic' && (
+            {MODE_LABEL[mode] && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                 {MODE_LABEL[mode]}
               </span>
@@ -384,7 +409,17 @@ export default function Game() {
               transition={{ duration: 0.4, delay: 0.1 }}
               className={`chess-container ${myTurn ? 'my-turn' : ''}`}
             >
-              {gameState ? (
+              {gameState && ex ? (
+                <BigBoard
+                  data={ex}
+                  yourColor={yourColor}
+                  canInteract={myTurn}
+                  legalMoves={gameState.legalMoves}
+                  onMove={handleMove}
+                  lastMove={gameState.lastMove}
+                  flashes={flashes}
+                />
+              ) : gameState ? (
                 <ChessBoard
                   fen={gameState.fen}
                   yourColor={yourColor}
@@ -447,6 +482,10 @@ export default function Game() {
 
             {mode === 'lootbox' && lb && gameState && (
               <LootPanel data={lb} fen={gameState.fen} yourColor={yourColor} />
+            )}
+
+            {mode === 'expand' && ex && gameState && (
+              <ExpandPanel data={ex} yourColor={yourColor} turn={gameState.turn} />
             )}
 
             {mode === 'fog' && (

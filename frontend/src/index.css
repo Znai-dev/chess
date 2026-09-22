@@ -7,9 +7,16 @@
     box-sizing: border-box;
   }
 
+  html {
+    /* the expansion board can make the page far taller than the viewport;
+       without this the gradient stops at 100vh and bare white shows through */
+    background: #050a10;
+  }
+
   body {
     @apply bg-slate-950 text-slate-100 font-sans antialiased;
     background: radial-gradient(ellipse at top, #0f1a2e 0%, #050a10 100%);
+    background-attachment: fixed;
     min-height: 100vh;
   }
 
@@ -203,3 +210,77 @@
   color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.6);
 }
 .effect-badge-count { font-weight: 800; font-size: 0.85em; }
+
+/* ── Expansion mode board ─────────────────────────────────────────────── */
+.big-board {
+  /* one knob drives everything: cell size, board size, glyph size */
+  /* the board must also fit the window height, sidebar and all */
+  --cell: min(calc(680px / var(--cells)), calc(92vw / var(--cells)), calc(72vh / var(--cells)), 68px);
+  position: relative;
+  display: grid;
+  width: calc(var(--cell) * var(--cells));
+  height: calc(var(--cell) * var(--cells));
+  font-size: calc(var(--cell) * 0.74);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: width .55s cubic-bezier(.22, 1, .36, 1), height .55s cubic-bezier(.22, 1, .36, 1);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.07),
+    0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.bb-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  animation: bbReveal .5s ease-out both;
+}
+@keyframes bbReveal {
+  from { opacity: 0; transform: scale(.55); }
+  to   { opacity: 1; transform: none; }
+}
+
+.bb-wall { filter: brightness(.5) saturate(.55); }
+
+.bb-piece { position: relative; z-index: 3; line-height: 1; }
+.bb-white { color: #ffffff; text-shadow: 1px 1px 0 #0b0f16, -1px 1px 0 #0b0f16, 1px -1px 0 #0b0f16, -1px -1px 0 #0b0f16, 0 0 3px rgba(0,0,0,.8); }
+.bb-black { color: #10141c; text-shadow: 1px 1px 0 #d7dee8, -1px 1px 0 #d7dee8, 1px -1px 0 #d7dee8, -1px -1px 0 #d7dee8; }
+
+.bb-terrain { position: relative; z-index: 2; font-size: .78em; line-height: 1; }
+.bb-terrain-portal { filter: drop-shadow(0 0 3px rgba(168,85,247,.9)); }
+.bb-terrain-treasure { filter: drop-shadow(0 0 3px rgba(250,204,21,.9)); }
+.bb-terrain-corner { position: absolute; right: 2%; top: 2%; z-index: 4; font-size: .34em; line-height: 1; }
+
+.bb-last     { position: absolute; inset: 0; background: rgba(255, 255, 0, .26); z-index: 1; }
+.bb-check    { position: absolute; inset: 0; z-index: 1; background: radial-gradient(circle, rgba(239,68,68,.85) 20%, rgba(239,68,68,.3) 70%, transparent 100%); }
+.bb-selected { position: absolute; inset: 0; background: rgba(20, 180, 100, .45); z-index: 1; }
+.bb-movable  { position: absolute; inset: 0; z-index: 1; box-shadow: inset 0 0 0 .07em rgba(52, 211, 153, .85); }
+
+.bb-dot { position: absolute; width: 30%; height: 30%; border-radius: 50%; background: rgba(15, 23, 42, .42); z-index: 4; }
+.bb-dot-portal { background: rgba(168, 85, 247, .8); box-shadow: 0 0 .15em rgba(168,85,247,.9); }
+.bb-capture { position: absolute; inset: 7%; border-radius: 50%; border: .11em solid rgba(239, 68, 68, .85); z-index: 4; }
+
+.bb-label { position: absolute; z-index: 4; font-size: .26em; font-weight: 700; color: rgba(15, 23, 42, .6); }
+.bb-label-file { bottom: 2%; right: 4%; }
+.bb-label-rank { top: 2%; left: 4%; }
+
+.bb-flash {
+  position: absolute; z-index: 10; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .9));
+}
+.bb-flash-label { font-size: .3em; font-weight: 800; color: #fff; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+
+.zone-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .7rem; color: #cbd5e1;
+}
+.zone-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+
+.map-chip {
+  padding: 4px 10px; border-radius: 999px; font-size: .72rem; font-weight: 600;
+  background: rgba(99, 102, 241, .18); color: #a5b4fc; white-space: nowrap;
+}

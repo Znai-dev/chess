@@ -1,5 +1,5 @@
 export type Color = 'w' | 'b';
-export type GameMode = 'classic' | 'lootbox' | 'fog' | 'magic';
+export type GameMode = 'expand' | 'lootbox' | 'fog' | 'magic';
 
 export interface PlayerInfo {
   name: string;
@@ -37,7 +37,11 @@ export type GameEvent =
   | { type: 'rebirth'; sq: string; piece: string; color: Color }
   | { type: 'magic_teleport'; from: string; to: string; color: Color }
   | { type: 'thawed'; color: Color }
-  | { type: 'blocked_by_invisible'; color: Color };
+  | { type: 'blocked_by_invisible'; color: Color }
+  | { type: 'expand'; size: number; zone: string; pieces: number }
+  | { type: 'portal_jump'; from: string; to: string; color: Color }
+  | { type: 'promote'; sq: string; color: Color }
+  | { type: 'treasure'; sq: string; to: string; color: Color };
 
 // ── Lootbox ──────────────────────────────────────────────────────────────
 
@@ -91,6 +95,27 @@ export interface MagicClientData {
   captured: { w: string[]; b: string[] };
 }
 
+// ── Expansion ─────────────────────────────────────────────────────────────
+
+export type TerrainType = 'wall' | 'portal' | 'treasure';
+
+export interface ExpandClientData {
+  min: number;
+  max: number;
+  size: number;
+  maxSize: number;
+  /** square → "wp" / "bk" … */
+  board: Record<string, string>;
+  terrain: Record<string, { type: TerrainType; pair?: string }>;
+  zone: Record<string, number>;
+  zones: { name: string; tint: string }[];
+  plies: number;
+  expansions: number;
+  /** plies until the map grows again; 0 once it is fully grown */
+  nextIn: number;
+  checkSq: string | null;
+}
+
 // ── Game State ────────────────────────────────────────────────────────────
 
 export interface GameState {
@@ -115,6 +140,7 @@ export interface GameState {
   lootboxData?: LootboxClientData;
   fogData?: FogClientData;
   magicData?: MagicClientData;
+  expandData?: ExpandClientData;
 }
 
 export interface GameOverEvent {

@@ -1,4 +1,4 @@
-export type GameMode = 'classic' | 'lootbox' | 'fog' | 'magic';
+export type GameMode = 'expand' | 'lootbox' | 'fog' | 'magic';
 export type Color = 'w' | 'b';
 
 /** A move the player may make right now. `kind` tells the client how to draw it. */
@@ -22,7 +22,12 @@ export type GameEvent =
   | { type: 'rebirth'; sq: string; piece: string; color: Color }
   | { type: 'magic_teleport'; from: string; to: string; color: Color }
   | { type: 'thawed'; color: Color }
-  | { type: 'blocked_by_invisible'; color: Color };
+  | { type: 'blocked_by_invisible'; color: Color }
+  // expansion mode
+  | { type: 'expand'; size: number; zone: string; pieces: number }
+  | { type: 'portal_jump'; from: string; to: string; color: Color }
+  | { type: 'promote'; sq: string; color: Color }
+  | { type: 'treasure'; sq: string; to: string; color: Color };
 
 /** What the player to move must do before the turn can pass. */
 export type Pending =

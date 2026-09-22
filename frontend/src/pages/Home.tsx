@@ -6,7 +6,7 @@ import type { GameMode } from '../types';
 import { BASE } from '../base';
 
 const MODES: { id: GameMode; icon: string; title: string; desc: string }[] = [
-  { id: 'classic',  icon: '♟',  title: 'Класичні шахи',  desc: 'Стандартні правила без змін' },
+  { id: 'expand',   icon: '🗺️', title: 'Експансія',      desc: 'Карта росте з 4×4 до 20×20' },
   { id: 'lootbox',  icon: '📦', title: 'Лутбокси',        desc: 'Скрині: лють, бомби, телепорт, щити…' },
   { id: 'fog',      icon: '🌫️', title: 'Туман війни',     desc: 'Обмежена видимість поля бою' },
   { id: 'magic',    icon: '✨', title: 'Магічні шахи',    desc: 'Заклинання та магічні клітинки' },
@@ -32,7 +32,7 @@ function randomName() {
 
 export default function Home() {
   const [name, setName]       = useState(randomName);
-  const [mode, setMode]       = useState<GameMode>('classic');
+  const [mode, setMode]       = useState<GameMode>('expand');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
