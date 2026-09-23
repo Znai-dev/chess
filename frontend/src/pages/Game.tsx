@@ -16,6 +16,7 @@ import LootPanel from '../components/LootPanel';
 import BigBoard from '../components/BigBoard';
 import ExpandPanel from '../components/ExpandPanel';
 import TurnBar from '../components/TurnBar';
+import { playerName as playerName_ } from '../names';
 
 const MODE_LABEL: Record<string, string> = { expand: '🗺️ Експансія', lootbox: '📦 Лутбокси', fog: '🌫️ Туман', magic: '✨ Магія' };
 
@@ -23,8 +24,8 @@ export default function Game() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
 
-  const [playerName, setPlayerName] = useState<string | null>(sessionStorage.getItem('playerName'));
-  const [nameInput, setNameInput] = useState('');
+  // Settled once, no form: opening a link drops you straight into the game.
+  const [playerName] = useState(playerName_);
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [yourColor, setYourColor] = useState<Color | null>(null);
@@ -35,13 +36,6 @@ export default function Game() {
   const flashSeq = useRef(0);
   const yourColorRef = useRef<Color | null>(null);
   const playersRef = useRef<PlayerInfo[]>([]);
-
-  function submitName() {
-    const trimmed = nameInput.trim();
-    if (!trimmed) return;
-    sessionStorage.setItem('playerName', trimmed);
-    setPlayerName(trimmed);
-  }
 
   // ── Bursts on the board ───────────────────────────────────────────────────
   const flash = useCallback((sq: string, icon: string, tone: Flash['tone'], label?: string) => {
@@ -351,33 +345,6 @@ export default function Game() {
     toast.success('Пропозицію нічиї надіслано');
   };
   const handleRematch = () => { if (roomId) socket.emit('rematch', { roomId }); };
-
-  // ── Name entry screen ─────────────────────────────────────────────────
-  if (!playerName) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-8 w-full max-w-sm">
-          <div className="text-center mb-6">
-            <div className="text-5xl mb-3">♟</div>
-            <h2 className="text-xl font-bold text-white mb-1">Вас запросили в гру</h2>
-            <p className="text-slate-400 text-sm">Введіть ім'я щоб приєднатись</p>
-          </div>
-          <input
-            autoFocus type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitName()}
-            placeholder="Ваше ім'я..." maxLength={20}
-            className="w-full px-4 py-3 rounded-xl bg-slate-800/70 border border-slate-700/60 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/70 focus:ring-1 focus:ring-indigo-500/40 transition-all mb-4"
-          />
-          <button onClick={submitName} disabled={!nameInput.trim()} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
-            Приєднатись до гри
-          </button>
-          <button onClick={() => navigate('/')} className="w-full mt-2 text-sm text-slate-500 hover:text-slate-300 transition-colors py-2">
-            ← На головну
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
 
   // ── Main game UI ──────────────────────────────────────────────────────
   const opponent = gameState?.players.find((p) => p.color !== yourColor);

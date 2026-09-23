@@ -5,6 +5,7 @@ export interface PlayerInfo {
   name: string;
   color: Color;
   connected: boolean;
+  isBot?: boolean;
 }
 
 export interface LogEntry {

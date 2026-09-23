@@ -30,6 +30,7 @@ export default function TurnBar({ state, yourColor, spellName, onSkipExtraMove, 
   const spectator = yourColor === null;
   const myTurn = !spectator && state.turn === yourColor;
   const pending = state.pending;
+  const opponentIsBot = !!state.players.find((p) => p.color !== yourColor)?.isBot;
 
   // What the game is waiting for, in one line
   let hint: React.ReactNode = null;
@@ -63,7 +64,9 @@ export default function TurnBar({ state, yourColor, spellName, onSkipExtraMove, 
       <div className="flex items-center gap-3 w-full">
         <span className={`turn-pill ${myTurn ? 'mine' : 'theirs'}`}>
           <span className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${state.turn === 'w' ? 'bg-white border-slate-300' : 'bg-slate-900 border-slate-500'}`} />
-          {spectator ? (state.turn === 'w' ? 'Хід білих' : 'Хід чорних') : myTurn ? 'ВАШ ХІД' : 'Хід суперника'}
+          {spectator
+            ? (state.turn === 'w' ? 'Хід білих' : 'Хід чорних')
+            : myTurn ? 'ВАШ ХІД' : opponentIsBot ? 'Бот думає…' : 'Хід суперника'}
         </span>
         {state.inCheck && <span className="check-chip">⚠️ Шах!</span>}
         {state.expandData && (
