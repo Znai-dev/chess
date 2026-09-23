@@ -32,6 +32,15 @@ interface Player {
 
 interface LogEntry { color: Color; san: string }
 
+/** One position in the game record — enough for the client to redraw the board. */
+interface ReplayFrame {
+  san: string;
+  color: Color | null;
+  lastMove: { from: string; to: string } | null;
+  fen: string;
+  expand?: ReturnType<typeof serializeExpand>;
+}
+
 interface Room {
   id: string;
   game: Chess;
@@ -48,6 +57,7 @@ interface Room {
   lastMove: { from: string; to: string } | null;
   bot: { difficulty: Difficulty; color: Color } | null;
   botTimer: NodeJS.Timeout | null;
+  frames: ReplayFrame[];
 }
 
 const app = express();
@@ -246,6 +256,7 @@ function applyMove(
       room.log.push({ color, san });
       room.lastMove = lastMove;
       room.drawOffer = null;
+      pushFrame(room, san, color);
       afterChange(room, events);
     }
     return { ok: true };
@@ -316,6 +327,27 @@ function applyMove(
 
   events.push(...handleMagicPostMove(room.game, data, from, to, result.captured, color));
   return commit(result.san, { from, to }, events);
+}
+
+// -- Game record ------------------------------------------------------------
+
+const MAX_FRAMES = 400;
+
+function pushFrame(room: Room, san: string, color: Color | null): void {
+  if (room.frames.length >= MAX_FRAMES) return;
+  room.frames.push({
+    san,
+    color,
+    lastMove: room.lastMove,
+    fen: room.mode === 'expand' ? '' : room.game.fen(),
+    expand: room.mode === 'expand' && room.expandData ? serializeExpand(room.expandData) : undefined,
+  });
+}
+
+/** Start a fresh record with the opening position in it. */
+function startRecord(room: Room): void {
+  room.frames = [];
+  pushFrame(room, '', null);
 }
 
 // -- Bot -------------------------------------------------------------------
@@ -491,6 +523,7 @@ app.post('/api/rooms', (req, res) => {
     lastMove: null,
     bot: botLevel ? { difficulty: botLevel, color: 'b' } : null,
     botTimer: null,
+    frames: [],
   };
   rooms.set(roomId, room);
   if (botLevel) {
@@ -554,6 +587,7 @@ io.on('connection', (socket) => {
       if (room.players.length === 2) {
         room.status = 'playing';
         initModeData(room);
+        startRecord(room);
       }
 
       socket.emit('game-state', buildState(room, color));
@@ -633,6 +667,15 @@ io.on('connection', (socket) => {
 
   // ── Standard events ────────────────────────────────────────────────────
 
+  socket.on('request-replay', ({ roomId }: { roomId: string }) => {
+    const room = rooms.get(roomId.toUpperCase());
+    if (!room) return;
+    // The record holds the unmasked board, so it stays sealed until the game is
+    // over — otherwise it would hand out fog positions and invisible pieces.
+    if (room.status !== 'finished') { socket.emit('replay-data', { mode: room.mode, frames: [] }); return; }
+    socket.emit('replay-data', { mode: room.mode, frames: room.frames });
+  });
+
   socket.on('resign', ({ roomId }: { roomId: string }) => {
     const room = rooms.get(roomId.toUpperCase());
     if (!room || room.status !== 'playing') return;
@@ -679,6 +722,7 @@ io.on('connection', (socket) => {
     room.players.forEach((p) => { p.color = otherColor(p.color); });
     if (room.bot) room.bot.color = otherColor(room.bot.color);
     initModeData(room);
+    startRecord(room);
     emitState(room, 'rematch-start');
     maybeScheduleBot(room);
   });

@@ -150,13 +150,12 @@ function fuzzExpand() {
       if (grew !== shouldGrow) throw new Error(`expansion schedule broken at ply ${expectedPlies}: ${sizeBefore}->${sizeAfter}`);
       if (grew && sizeAfter !== sizeBefore + 2) throw new Error('ring is not +2');
       if (!E.findKingSq(d, 'w') || !E.findKingSq(d, 'b')) throw new Error('a king was captured');
-      for (const [tsq, t] of Object.entries(d.terrain)) {
-        if (t.type === 'wall' && !(t.hp > 0)) throw new Error(`wall at ${tsq} survived with hp ${t.hp}`);
-      }
-      // hitting a wall must not teleport or move the attacker
+      // a broken wall is gone, and the attacker now stands on its square
       const brk = res.events.find((e) => e.type === 'wall_break');
-      if (brk && d.lastMove.to !== brk.sq) throw new Error('wall hit moved the attacker');
-      if (brk && !d.board[d.lastMove.from]) throw new Error('attacker vanished after hitting a wall');
+      if (brk) {
+        if (d.terrain[brk.sq]) throw new Error(`wall at ${brk.sq} survived the blow`);
+        if (!d.board[brk.sq] && d.lastMove.to === brk.sq) throw new Error('nobody took the broken wall square');
+      }
       for (const [sq, p] of Object.entries(d.board)) {
         const [x, y] = E.parseSq(sq);
         if (x < d.min || x > d.max || y < d.min || y > d.max) throw new Error(`piece ${sq} outside the map`);

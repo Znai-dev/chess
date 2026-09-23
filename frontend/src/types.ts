@@ -108,7 +108,7 @@ export interface ExpandClientData {
   maxSize: number;
   /** square → "wp" / "bk" … */
   board: Record<string, string>;
-  terrain: Record<string, { type: TerrainType; pair?: string; hp?: number }>;
+  terrain: Record<string, { type: TerrainType; pair?: string; pairId?: number }>;
   zone: Record<string, number>;
   zones: { name: string; tint: string }[];
   plies: number;
@@ -143,6 +143,15 @@ export interface GameState {
   fogData?: FogClientData;
   magicData?: MagicClientData;
   expandData?: ExpandClientData;
+}
+
+/** One position from the game record, for watching a finished game back. */
+export interface ReplayFrame {
+  san: string;
+  color: Color | null;
+  lastMove: { from: string; to: string } | null;
+  fen: string;
+  expand?: ExpandClientData;
 }
 
 export interface GameOverEvent {

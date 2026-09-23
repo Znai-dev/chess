@@ -4,7 +4,7 @@ import { Chess } from 'chess.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import socket from '../socket';
-import type { GameState, Color, GameOverEvent, GameEvent, PlayerInfo } from '../types';
+import type { GameState, Color, GameOverEvent, GameEvent, PlayerInfo, ReplayFrame } from '../types';
 import { EFFECTS, SPELL_META } from '../effects';
 import ChessBoard, { Badge, Flash } from '../components/ChessBoard';
 import PlayerCard from '../components/PlayerCard';
@@ -16,6 +16,7 @@ import LootPanel from '../components/LootPanel';
 import BigBoard from '../components/BigBoard';
 import ExpandPanel from '../components/ExpandPanel';
 import TurnBar from '../components/TurnBar';
+import ReplayModal from '../components/ReplayModal';
 import { playerName as playerName_ } from '../names';
 
 const MODE_LABEL: Record<string, string> = { expand: '🗺️ Експансія', lootbox: '📦 Лутбокси', fog: '🌫️ Туман', magic: '✨ Магія' };
@@ -33,6 +34,7 @@ export default function Game() {
   const [showShare, setShowShare] = useState(false);
   const [flashes, setFlashes] = useState<Flash[]>([]);
   const [zoneHighlight, setZoneHighlight] = useState<number | null>(null);
+  const [replay, setReplay] = useState<ReplayFrame[] | null>(null);
   const flashSeq = useRef(0);
   const yourColorRef = useRef<Color | null>(null);
   const playersRef = useRef<PlayerInfo[]>([]);
@@ -200,6 +202,10 @@ export default function Game() {
       ), { duration: 15000 });
     });
 
+    socket.on('replay-data', ({ frames }: { frames: ReplayFrame[] }) => {
+      if (frames.length < 2) { toast('Партія надто коротка для реплею'); return; }
+      setReplay(frames);
+    });
     socket.on('draw-declined', () => toast.error('Нічию відхилено'));
     socket.on('invalid-move', ({ message }: { message: string }) => toast.error(message));
     socket.on('spell-error', ({ message }: { message: string }) => toast.error(message));
@@ -210,7 +216,8 @@ export default function Game() {
 
     return () => {
       for (const ev of ['game-state', 'game-start', 'move-made', 'player-update', 'game-over', 'rematch-start',
-        'draw-offered', 'draw-declined', 'invalid-move', 'spell-error', 'player-disconnected', 'error']) socket.off(ev);
+        'draw-offered', 'draw-declined', 'invalid-move', 'spell-error', 'player-disconnected', 'error',
+        'replay-data']) socket.off(ev);
       socket.disconnect();
     };
   }, [roomId, playerName, navigate, handleEvents]);
@@ -345,6 +352,7 @@ export default function Game() {
     toast.success('Пропозицію нічиї надіслано');
   };
   const handleRematch = () => { if (roomId) socket.emit('rematch', { roomId }); };
+  const handleReplay = () => { if (roomId) socket.emit('request-replay', { roomId }); };
 
   // ── Main game UI ──────────────────────────────────────────────────────
   const opponent = gameState?.players.find((p) => p.color !== yourColor);
@@ -492,7 +500,15 @@ export default function Game() {
         {gameOver && (
           <GameOverModal
             event={gameOver} yourColor={yourColor} players={gameState?.players ?? []}
-            onRematch={handleRematch} onHome={() => navigate('/')}
+            onRematch={handleRematch} onHome={() => navigate('/')} onReplay={handleReplay}
+          />
+        )}
+        {replay && gameState && (
+          <ReplayModal
+            frames={replay}
+            mode={gameState.mode}
+            yourColor={yourColor}
+            onClose={() => setReplay(null)}
           />
         )}
       </AnimatePresence>

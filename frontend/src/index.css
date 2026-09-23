@@ -259,13 +259,14 @@
 
 .bb-wall-art { inset: 0; background: rgba(24, 26, 24, .55); }
 .bb-wall-art svg rect { fill: #6f6d64; stroke: #35342f; stroke-width: .7; }
-.bb-wall-art.cracked svg rect { fill: #85817533; stroke: #35342f; }
-.bb-crack { fill: none; stroke: #1c1814; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 
 .bb-portal-art { inset: 15%; }
 .bb-portal-art svg { animation: bbSpin 7s linear infinite; }
-.bb-portal-ring { fill: none; stroke: #c084fc; stroke-width: 2.6; stroke-dasharray: 7 4.5; }
-.bb-portal-core { fill: #7c3aed; }
+.bb-portal-ring { fill: none; stroke-width: 2.6; stroke-dasharray: 7 4.5; }
+
+/* the other end of a portal you could jump into right now */
+.bb-exit { position: absolute; inset: 4%; z-index: 5; border-radius: 12%; animation: bbPulse 1.1s ease-in-out infinite; }
+@keyframes bbPulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @keyframes bbSpin { to { transform: rotate(360deg); } }
 
 .bb-treasure-art { inset: 17%; }
@@ -305,6 +306,14 @@
 .bb-label.on-dark  { color: rgba(238, 238, 210, .8); }
 .bb-label.on-light { color: rgba(90, 105, 70, .85); }
 
+/* ── Last move ── */
+.bb-arrow {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  width: 100%; height: 100%;
+}
+.bb-arrow line { stroke: rgba(250, 204, 21, .85); stroke-linecap: round; }
+.bb-arrow polygon { fill: rgba(250, 204, 21, .9); }
+
 /* ── One-shot bursts ── */
 .bb-flash {
   position: absolute; z-index: 10; pointer-events: none;
@@ -339,3 +348,21 @@
   padding: 4px 10px; border-radius: 999px; font-size: .72rem; font-weight: 600;
   background: rgba(99, 102, 241, .18); color: #a5b4fc; white-space: nowrap;
 }
+
+/* ── Replay ───────────────────────────────────────────────────────────── */
+.replay-btn {
+  flex: 1; padding: 6px 0; border-radius: 10px;
+  background: rgba(51, 65, 85, .7); border: 1px solid rgba(100, 116, 139, .4);
+  color: #e2e8f0; font-size: .85rem; transition: background .15s;
+}
+.replay-btn:hover { background: rgba(71, 85, 105, .9); }
+.replay-btn.wide { flex: 1.6; background: rgba(99, 102, 241, .25); border-color: rgba(129, 140, 248, .5); }
+
+.replay-range { width: 100%; accent-color: #6366f1; }
+
+.replay-move {
+  display: flex; gap: 6px; width: 100%; padding: 2px 6px; border-radius: 6px;
+  font-family: ui-monospace, monospace; font-size: 11px; text-align: left;
+}
+.replay-move:hover { background: rgba(71, 85, 105, .35); }
+.replay-move.current { background: rgba(16, 185, 129, .2); color: #6ee7b7; }

@@ -210,6 +210,7 @@ export default function ChessBoard({
         customLightSquareStyle={{ backgroundColor: '#eeeed2' }}
         arePiecesDraggable={canInteract && !targetMode}
         isDraggablePiece={({ sourceSquare }) => movesFrom.has(sourceSquare)}
+        customArrows={lastMove ? [[lastMove.from as never, lastMove.to as never, 'rgba(250, 204, 21, 0.8)']] : []}
         animationDuration={animationDuration}
         customDropSquareStyle={{ boxShadow: 'inset 0 0 1px 4px rgba(255,255,255,0.6)' }}
       />

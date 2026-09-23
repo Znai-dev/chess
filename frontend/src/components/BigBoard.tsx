@@ -46,27 +46,31 @@ const Piece = memo(function Piece({ code }: { code: string }) {
   );
 });
 
-function Wall({ hp }: { hp: number }) {
-  const cracked = hp <= 1;
+function Wall() {
   return (
-    <span className={`bb-art bb-wall-art${cracked ? ' cracked' : ''}`} aria-hidden>
+    <span className="bb-art bb-wall-art" aria-hidden>
       <svg viewBox="0 0 24 24">
         <rect x="1.5" y="4" width="9.5" height="6" rx="1.2" />
         <rect x="13" y="4" width="9.5" height="6" rx="1.2" />
         <rect x="1.5" y="11.5" width="6" height="6" rx="1.2" />
         <rect x="9.5" y="11.5" width="13" height="6" rx="1.2" />
-        {cracked && <path className="bb-crack" d="M12 3.2 L10.2 8 L13.4 10.5 L10.8 14 L12.6 18.6" />}
       </svg>
     </span>
   );
 }
 
-function Portal() {
+/** Each portal pair gets its own hue, so both ends of a jump are obvious. */
+const PORTAL_HUES = [276, 190, 30, 330, 140, 210, 58, 0, 95, 250];
+export const portalColor = (pairId = 0): string =>
+  `hsl(${PORTAL_HUES[pairId % PORTAL_HUES.length]}, 85%, 62%)`;
+
+function Portal({ pairId }: { pairId?: number }) {
+  const color = portalColor(pairId);
   return (
     <span className="bb-art bb-portal-art" aria-hidden>
       <svg viewBox="0 0 24 24">
-        <circle className="bb-portal-ring" cx="12" cy="12" r="8.2" />
-        <circle className="bb-portal-core" cx="12" cy="12" r="3.4" />
+        <circle className="bb-portal-ring" cx="12" cy="12" r="8.2" style={{ stroke: color }} />
+        <circle className="bb-portal-core" cx="12" cy="12" r="3.4" style={{ fill: color }} />
       </svg>
     </span>
   );
@@ -132,6 +136,40 @@ export default function BigBoard({
     return m;
   }, [rows, size]);
 
+  /** Where the portals under the current move hints would spit you out. */
+  const portalExits = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [to, opt] of targets) {
+      if (opt.kind !== 'teleport') continue;
+      const cell = data.terrain[to];
+      if (cell?.pair) out.set(cell.pair, portalColor(cell.pairId));
+    }
+    return out;
+  }, [targets, data.terrain]);
+
+  /** The last move drawn as an arrow — a tinted square alone is too easy to miss. */
+  const arrow = useMemo(() => {
+    if (!lastMove) return null;
+    const a = flatIndex.get(lastMove.from);
+    const b = flatIndex.get(lastMove.to);
+    if (a === undefined || b === undefined || a === b) return null;
+    const cell = 100 / size;
+    const at = (i: number) => ({ x: (i % size + 0.5) * cell, y: (Math.floor(i / size) + 0.5) * cell });
+    const from = at(a), to = at(b);
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const head = Math.min(cell * 0.5, len * 0.45);
+    const tip = { x: to.x - ux * cell * 0.1, y: to.y - uy * cell * 0.1 };
+    const base = { x: tip.x - ux * head, y: tip.y - uy * head };
+    const wing = head * 0.45;
+    return {
+      x1: from.x, y1: from.y, x2: base.x, y2: base.y,
+      head: `${tip.x},${tip.y} ${base.x - uy * wing},${base.y + ux * wing} ${base.x + uy * wing},${base.y - ux * wing}`,
+      width: Math.max(cell * 0.11, 0.35),
+    };
+  }, [lastMove, flatIndex, size]);
+
   function handleClick(sq: string) {
     if (!canInteract) return;
     if (selected === sq) { setSelected(null); return; }
@@ -192,18 +230,24 @@ export default function BigBoard({
               {selected === sq && <span className="bb-selected" />}
               {movable && <span className="bb-movable" />}
 
-              {terrain?.type === 'wall' && <Wall hp={terrain.hp ?? 2} />}
-              {terrain?.type === 'portal' && !code && <Portal />}
+              {terrain?.type === 'wall' && <Wall />}
+              {terrain?.type === 'portal' && !code && <Portal pairId={terrain.pairId} />}
               {terrain?.type === 'treasure' && !code && <Treasure />}
               {terrain && code && terrain.type !== 'wall' && (
-                <span className={`bb-under bb-under-${terrain.type}`} />
+                <span
+                  className={`bb-under bb-under-${terrain.type}`}
+                  style={terrain.type === 'portal' ? { background: portalColor(terrain.pairId) } : undefined}
+                />
+              )}
+              {portalExits.has(sq) && (
+                <span className="bb-exit" style={{ boxShadow: `inset 0 0 0 .08em ${portalExits.get(sq)}` }} />
               )}
 
               {code && <Piece code={code} />}
 
               {target && (
                 target.kind === 'break'
-                  ? <span className={`bb-break${(terrain?.hp ?? 2) <= 1 ? ' final' : ''}`} />
+                  ? <span className="bb-break final" />
                   : target.capture
                     ? <span className="bb-capture" />
                     : <span className={`bb-dot${target.kind === 'teleport' ? ' portal' : ''}`} />
@@ -218,6 +262,13 @@ export default function BigBoard({
             </div>
           );
         }))}
+
+        {arrow && (
+          <svg className="bb-arrow" viewBox="0 0 100 100" aria-hidden>
+            <line x1={arrow.x1} y1={arrow.y1} x2={arrow.x2} y2={arrow.y2} strokeWidth={arrow.width} />
+            <polygon points={arrow.head} />
+          </svg>
+        )}
 
         <AnimatePresence>
           {(flashes ?? []).map((f) => {

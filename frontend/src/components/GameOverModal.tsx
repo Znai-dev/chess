@@ -7,6 +7,7 @@ interface Props {
   players: PlayerInfo[];
   onRematch: () => void;
   onHome: () => void;
+  onReplay: () => void;
 }
 
 const REASON_LABELS: Record<string, string> = {
@@ -19,7 +20,7 @@ const REASON_LABELS: Record<string, string> = {
   draw: 'Нічия',
 };
 
-export default function GameOverModal({ event, yourColor, players, onRematch, onHome }: Props) {
+export default function GameOverModal({ event, yourColor, players, onRematch, onHome, onReplay }: Props) {
   const isDraw = event.winner === null;
   const iWon = !isDraw && event.winner === yourColor;
   const isSpectator = yourColor === null;
@@ -89,6 +90,9 @@ export default function GameOverModal({ event, yourColor, players, onRematch, on
         )}
 
         <div className="flex flex-col gap-2">
+          <button onClick={onReplay} className="btn-secondary w-full">
+            ▶ Переглянути партію
+          </button>
           {!isSpectator && (
             <button onClick={onRematch} className="btn-primary w-full">
               🔄 Реванш

@@ -14,14 +14,18 @@ export const GRID = 20;
 export const START_SIZE = 4;
 export const MAX_SIZE = 20;
 export const PLIES_PER_EXPANSION = 3;
-/** Hits needed to bring a wall down. Attacking one costs a move; the attacker stays put. */
-export const WALL_HP = 2;
 
 export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 export type TerrainType = 'wall' | 'portal' | 'treasure';
 
 export interface ExpandPiece { type: PieceType; color: Color }
-export interface TerrainCell { type: TerrainType; pair?: string; hp?: number }
+export interface TerrainCell {
+  type: TerrainType;
+  /** portal: the square this one throws you to */
+  pair?: string;
+  /** portal: which pair this is, so each one can get its own colour */
+  pairId?: number;
+}
 
 export interface ExpandData {
   min: number;
@@ -35,6 +39,8 @@ export interface ExpandData {
   zone: Record<string, number>;
   /** pieces each colour has captured */
   taken: { w: PieceType[]; b: PieceType[] };
+  /** how many portal pairs have been opened, so each new one gets its own id */
+  portalPairs: number;
   lastMove: { from: string; to: string } | null;
 }
 
@@ -99,6 +105,7 @@ export function initExpandData(): ExpandData {
     min, max, turn: 'w', plies: 0, expansions: 0,
     board: {}, terrain: {}, zone: {},
     taken: { w: [], b: [] },
+    portalPairs: 0,
     lastMove: null,
   };
   for (let x = min; x <= max; x++) for (let y = min; y <= max; y++) d.zone[sqName(x, y)] = 0;
@@ -240,11 +247,9 @@ function leavesKingSafe(d: ExpandData, from: string, to: string, color: Color, k
 
   const wall = d.terrain[to];
   if (wall?.type === 'wall') {
-    // Hitting a wall costs the move but moves nothing, so it can never answer a
-    // check; only the blow that brings the wall down changes the position.
-    if ((wall.hp ?? 1) > 1) return kingSafeAt(d, kingSq, color);
+    // Breaking a wall is an ordinary move once the wall is out of the way.
     delete d.terrain[to];
-    const safe = kingSafeAt(d, kingSq, color);
+    const safe = leavesKingSafe(d, from, to, color, kingSq);
     d.terrain[to] = wall;
     return safe;
   }
@@ -368,16 +373,17 @@ export function maybeExpand(d: ExpandData): GameEvent[] {
   for (let i = 0; i < zone.walls; i++) {
     const sq = take();
     if (!sq) break;
-    d.terrain[sq] = { type: 'wall', hp: WALL_HP };
-    d.terrain[mirrorSq(sq)] = { type: 'wall', hp: WALL_HP };
+    d.terrain[sq] = { type: 'wall' };
+    d.terrain[mirrorSq(sq)] = { type: 'wall' };
   }
   for (let i = 0; i < zone.portals; i++) {
     const sq = take();
     if (!sq) break;
     const twin = mirrorSq(sq);
     // The pair links the two halves: stepping in throws you across the map.
-    d.terrain[sq] = { type: 'portal', pair: twin };
-    d.terrain[twin] = { type: 'portal', pair: sq };
+    const pairId = d.portalPairs++;
+    d.terrain[sq] = { type: 'portal', pair: twin, pairId };
+    d.terrain[twin] = { type: 'portal', pair: sq, pairId };
   }
   for (let i = 0; i < zone.treasures; i++) {
     const sq = take();
@@ -404,17 +410,11 @@ export function applyExpandMove(d: ExpandData, from: string, to: string): Expand
   const events: GameEvent[] = [];
   const glyph = GLYPH[piece.type];
 
-  const wall = d.terrain[to];
-  if (wall?.type === 'wall') {
-    const hp = (wall.hp ?? 1) - 1;
-    const destroyed = hp <= 0;
-    if (destroyed) delete d.terrain[to]; else wall.hp = hp;
-    events.push({ type: 'wall_break', sq: to, color, destroyed });
-    d.lastMove = { from, to };
-    d.turn = otherColor(color);
-    d.plies++;
-    events.push(...maybeExpand(d));
-    return { ok: true, events, san: `${glyph}${from}⚒${to}${destroyed ? '✕' : ''}` };
+  // A wall falls to a single blow and the attacker walks into its square.
+  const brokeWall = d.terrain[to]?.type === 'wall';
+  if (brokeWall) {
+    delete d.terrain[to];
+    events.push({ type: 'wall_break', sq: to, color, destroyed: true });
   }
 
   const final = portalTarget(d, to, color);
@@ -457,7 +457,8 @@ export function applyExpandMove(d: ExpandData, from: string, to: string): Expand
   d.plies++;
   events.push(...maybeExpand(d));
 
-  return { ok: true, events, san: `${glyph}${from}${victimA ? '×' : '→'}${to}${suffix}` };
+  const arrow = brokeWall ? '⚒' : victimA ? '×' : '→';
+  return { ok: true, events, san: `${glyph}${from}${arrow}${to}${suffix}` };
 }
 
 // ─── For the client ────────────────────────────────────────────────────────
