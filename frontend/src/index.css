@@ -180,8 +180,8 @@
    A 20x20 map has 400 squares — next to a sidebar they are unreadable. */
 .board-col.focus { gap: 6px; }
 .board-col.wide.focus {
-  --board: min(97vw, calc(100vh - 132px));
-  --board: min(97vw, calc(100dvh - 132px));
+  --board: min(97vw, calc(100vh - 120px));
+  --board: min(97vw, calc(100dvh - 120px));
 }
 .board-col.focus .turn-bar { min-height: 56px; padding: 8px 12px; }
 
