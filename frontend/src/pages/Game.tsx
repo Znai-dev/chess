@@ -35,6 +35,10 @@ export default function Game() {
   const [flashes, setFlashes] = useState<Flash[]>([]);
   const [zoneHighlight, setZoneHighlight] = useState<number | null>(null);
   const [replay, setReplay] = useState<ReplayFrame[] | null>(null);
+  // Big maps need the screen more than the side panels do.
+  const [focus, setFocus] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const autoFocused = useRef(false);
   const flashSeq = useRef(0);
   const yourColorRef = useRef<Color | null>(null);
   const playersRef = useRef<PlayerInfo[]>([]);
@@ -239,6 +243,15 @@ export default function Game() {
     return () => { document.title = 'Chess Online'; };
   }, [myTurn]);
 
+  // Once the map passes 12x12 the squares get too small to read next to a
+  // sidebar, so the board takes over the screen. Only ever automatic once —
+  // if the player switches back, that choice sticks.
+  const mapSize = ex?.size ?? 0;
+  useEffect(() => {
+    if (mode !== 'expand' || autoFocused.current) return;
+    if (mapSize >= 12) { autoFocused.current = true; setFocus(true); }
+  }, [mode, mapSize]);
+
   const checkSquare = useMemo(() => {
     if (!gameState?.inCheck) return null;
     if (gameState.mode === 'expand') return null;   // the big board marks its own king
@@ -363,10 +376,69 @@ export default function Game() {
   const pendingSpellId = myPending?.kind === 'spell_target' ? myPending.spellId : null;
   const spellName = pendingSpellId && md ? md.spells[yourColor!]?.find(s => s.id === pendingSpellId)?.name ?? null : null;
 
+  const sidebar = (
+    <>
+{!isSpectator && playing && (
+              <div className="glass rounded-2xl p-4 flex flex-col gap-2">
+                <p className="rule mb-2">Дії</p>
+                <button onClick={handleDrawOffer} className="btn-secondary text-sm w-full">Запропонувати нічию</button>
+                <button onClick={handleResign} className="btn-danger text-sm w-full">Здатися</button>
+              </div>
+            )}
+
+            {mode === 'magic' && md && yourColor && (
+              <SpellPanel
+                data={md}
+                yourColor={yourColor}
+                isYourTurn={myTurn}
+                pendingSpellId={pendingSpellId}
+                onCastSpell={handleCastSpell}
+                onCancel={handleCancelSpell}
+              />
+            )}
+
+            {mode === 'lootbox' && lb && gameState && (
+              <LootPanel data={lb} fen={gameState.fen} yourColor={yourColor} />
+            )}
+
+            {mode === 'expand' && ex && gameState && (
+              <ExpandPanel
+                data={ex}
+                yourColor={yourColor}
+                turn={gameState.turn}
+                highlight={zoneHighlight}
+                onHighlight={setZoneHighlight}
+              />
+            )}
+
+            {mode === 'fog' && (
+              <div className="glass rounded-2xl p-4 text-xs text-slate-400 leading-relaxed">
+                🌫️ Ви бачите лише клітинки під ударом своїх фігур. Фігура, що дає шах, видима завжди.
+              </div>
+            )}
+
+            <MoveHistory history={gameState?.history ?? []} />
+    </>
+  );
+
   return (
     // anchored to the top: a vertically centred layout shifts the board every time a hint appears
-    <div className="min-h-screen flex flex-col items-center p-4 lg:p-8">
-      <div className="w-full max-w-6xl">
+    <div className={`min-h-screen flex flex-col items-center ${focus ? 'p-2' : 'p-4 lg:p-8'}`}>
+      <div className={`w-full ${focus ? '' : 'max-w-6xl'}`}>
+        {focus ? (
+          <div className="focus-top">
+            <button className="icon-btn" onClick={() => navigate('/')} title="На головну">←</button>
+            <div className="focus-players">
+              <span className="fp-name">{opponent?.name ?? '…'}</span>
+              <span className="fp-score">{material[oppColor]}</span>
+              <span className="fp-vs">:</span>
+              <span className="fp-score you">{yourColor ? material[yourColor] : 0}</span>
+              <span className="fp-name you">{me?.name ?? 'Ви'}</span>
+            </div>
+            <button className="icon-btn" onClick={() => setDrawerOpen(true)} title="Панелі та дії">☰</button>
+            <button className="icon-btn" onClick={() => setFocus(false)} title="Звичайний вигляд">⤡</button>
+          </div>
+        ) : (
         <header className="flex items-center justify-between gap-3 mb-5">
           <button onClick={() => navigate('/')} className="text-slate-400 hover:text-slate-100 transition-colors text-sm whitespace-nowrap">
             ← На головну
@@ -374,18 +446,26 @@ export default function Game() {
           <div className="flex items-center gap-2 min-w-0">
             {MODE_LABEL[mode] && <span className="map-chip truncate">{MODE_LABEL[mode]}</span>}
             <span className="text-slate-600 text-xs font-mono hidden sm:inline">#{roomId}</span>
+            {mode === 'expand' && (
+              <button onClick={() => setFocus(true)} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" title="Дошка на весь екран">
+                ⤢ Дошка
+              </button>
+            )}
             <button onClick={() => setShowShare(true)} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">Запросити</button>
           </div>
         </header>
+        )}
 
-        <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
+        <div className={`flex flex-col gap-6 items-start justify-center ${focus ? '' : 'lg:flex-row'}`}>
           {/* Board column — its width is fixed so nothing below it can move */}
-          <div className={`board-col mx-auto${mode === 'expand' ? ' wide' : ''}`}>
-            <PlayerCard
-              player={opponent} isOpponent
-              isActive={!!playing && gameState?.turn === oppColor}
-              captured={captured[oppColor]} advantage={material[oppColor] - material[yourColor ?? 'w']}
-            />
+          <div className={`board-col mx-auto${mode === 'expand' ? ' wide' : ''}${focus ? ' focus' : ''}`}>
+            {!focus && (
+              <PlayerCard
+                player={opponent} isOpponent
+                isActive={!!playing && gameState?.turn === oppColor}
+                captured={captured[oppColor]} advantage={material[oppColor] - material[yourColor ?? 'w']}
+              />
+            )}
 
             <div className="board-slot">
             <div className={`chess-container ${myTurn ? 'my-turn' : ''}`}>
@@ -432,58 +512,33 @@ export default function Game() {
               onCancelSpell={handleCancelSpell}
             />
 
-            <PlayerCard
-              player={me} isOpponent={false}
-              isActive={myTurn}
-              captured={yourColor ? captured[yourColor] : []} advantage={yourColor ? material[yourColor] - material[oppColor] : 0}
-            />
-          </div>
-
-          {/* Sidebar */}
-          <div className="flex flex-col gap-4 w-full lg:w-72 fade-in">
-            {!isSpectator && playing && (
-              <div className="glass rounded-2xl p-4 flex flex-col gap-2">
-                <p className="rule mb-2">Дії</p>
-                <button onClick={handleDrawOffer} className="btn-secondary text-sm w-full">Запропонувати нічию</button>
-                <button onClick={handleResign} className="btn-danger text-sm w-full">Здатися</button>
-              </div>
-            )}
-
-            {mode === 'magic' && md && yourColor && (
-              <SpellPanel
-                data={md}
-                yourColor={yourColor}
-                isYourTurn={myTurn}
-                pendingSpellId={pendingSpellId}
-                onCastSpell={handleCastSpell}
-                onCancel={handleCancelSpell}
+            {!focus && (
+              <PlayerCard
+                player={me} isOpponent={false}
+                isActive={myTurn}
+                captured={yourColor ? captured[yourColor] : []} advantage={yourColor ? material[yourColor] - material[oppColor] : 0}
               />
             )}
-
-            {mode === 'lootbox' && lb && gameState && (
-              <LootPanel data={lb} fen={gameState.fen} yourColor={yourColor} />
-            )}
-
-            {mode === 'expand' && ex && gameState && (
-              <ExpandPanel
-                data={ex}
-                yourColor={yourColor}
-                turn={gameState.turn}
-                highlight={zoneHighlight}
-                onHighlight={setZoneHighlight}
-              />
-            )}
-
-            {mode === 'fog' && (
-              <div className="glass rounded-2xl p-4 text-xs text-slate-400 leading-relaxed">
-                🌫️ Ви бачите лише клітинки під ударом своїх фігур. Фігура, що дає шах, видима завжди.
-              </div>
-            )}
-
-            <MoveHistory history={gameState?.history ?? []} />
           </div>
+
+          {!focus && <aside className="flex flex-col gap-4 w-full lg:w-72 fade-in">{sidebar}</aside>}
+          {/* On a phone the board is limited by width, so the space under it is
+              free anyway — better filled with the panels than left blank. */}
+          {focus && <aside className="focus-extra">{sidebar}</aside>}
         </div>
       </div>
+
+      {focus && drawerOpen && (
+        <div className="drawer" onClick={() => setDrawerOpen(false)}>
+          <div className="drawer-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="rule">Панелі</span>
+              <button className="icon-btn" onClick={() => setDrawerOpen(false)} title="Закрити">✕</button>
+            </div>
+            {sidebar}
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {showShare && roomId && (
