@@ -77,7 +77,7 @@ export default function GameOverModal({ event, yourColor, players, onRematch, on
 
         {/* Players recap */}
         {players.length === 2 && (
-          <div className="flex items-center justify-center gap-4 mb-6 py-3 px-4 bg-slate-800/50 rounded-xl">
+          <div className="flex items-center justify-center gap-4 mb-6 py-3 px-4 rounded-xl border border-[rgba(201,162,39,.16)] bg-[rgba(255,244,214,.035)]">
             {players.map((p) => (
               <div key={p.color} className="flex flex-col items-center gap-1">
                 <span className="text-xl">{p.color === 'w' ? '♔' : '♚'}</span>
@@ -95,11 +95,11 @@ export default function GameOverModal({ event, yourColor, players, onRematch, on
           </button>
           {!isSpectator && (
             <button onClick={onRematch} className="btn-primary w-full">
-              🔄 Реванш
+              Реванш
             </button>
           )}
           <button onClick={onHome} className="btn-secondary w-full">
-            🏠 На головну
+            На головну
           </button>
         </div>
       </motion.div>

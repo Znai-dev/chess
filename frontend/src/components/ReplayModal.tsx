@@ -66,7 +66,8 @@ export default function ReplayModal({ frames, mode, yourColor, onClose }: Props)
         </div>
 
         <div className="flex flex-col lg:flex-row gap-4 items-start">
-          <div className="flex flex-col items-center gap-3 mx-auto">
+          <div className={`board-col mx-auto${mode === 'expand' ? ' wide' : ''}`}>
+            <div className="board-slot">
             <div className="chess-container">
               {mode === 'expand' && frame.expand ? (
                 <BigBoard
@@ -87,6 +88,7 @@ export default function ReplayModal({ frames, mode, yourColor, onClose }: Props)
                   lastMove={frame.lastMove}
                 />
               )}
+            </div>
             </div>
 
             <div className="flex items-center gap-2 w-full">
@@ -114,7 +116,7 @@ export default function ReplayModal({ frames, mode, yourColor, onClose }: Props)
           </div>
 
           <div className="glass rounded-xl p-3 w-full lg:w-56 flex-shrink-0" style={{ maxHeight: 460 }}>
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">Ходи</p>
+            <p className="rule mb-2">Ходи</p>
             <div ref={listRef} className="overflow-y-auto pr-1" style={{ maxHeight: 400 }}>
               {frames.slice(1).map((f, i) => (
                 <button

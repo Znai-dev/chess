@@ -19,7 +19,7 @@ export default function SpellPanel({ data, yourColor, isYourTurn, pendingSpellId
   return (
     <div className="flex flex-col gap-3">
       <div className="glass rounded-2xl p-4">
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">
+        <p className="rule mb-3">
           Заклинання {yourColor === 'w' ? '⬜' : '⬛'}
         </p>
 
@@ -70,7 +70,7 @@ export default function SpellPanel({ data, yourColor, isYourTurn, pendingSpellId
       </div>
 
       <div className="glass rounded-2xl p-4">
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">Магічні клітинки</p>
+        <p className="rule mb-3">Магічні клітинки</p>
         <div className="flex flex-col gap-2">
           <Legend icon="🌀" label={`Портали ${data.teleports.a.join('↔')}, ${data.teleports.b.join('↔')}`}
                   desc="Фігура (не король) миттєво переноситься на парну клітинку. Кожен портал спрацьовує раз." />

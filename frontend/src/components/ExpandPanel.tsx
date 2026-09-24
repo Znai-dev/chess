@@ -11,7 +11,7 @@ interface Props {
 }
 
 const TERRAIN = [
-  { icon: '⛰', name: 'Стіни', desc: 'Перекривають промінь тур, слонів і ферзів. Ламаються: бийте по стіні звідки могли б узяти фігуру — пішак і вперед, і по діагоналі. Удар коштує хід, фігура лишається на місці; два удари — і стіна падає.' },
+  { icon: '⛰', name: 'Стіни', desc: 'Перекривають промінь тур, слонів і ферзів. Ламаються з одного удару: бийте по стіні звідти, звідки взяли б фігуру (пішак — і вперед, і по діагоналі), і займайте її клітинку.' },
   { icon: '🌀', name: 'Портали', desc: 'Парні. Заходиш в один — вилітаєш з парного на протилежному боці карти. Зайнятий своєю фігурою портал не спрацьовує.' },
   { icon: '💎', name: 'Скарби', desc: 'Підвищують фігуру на ранг: пішак → кінь → слон → тура → ферзь. Ферзь і король просто проходять повз.' },
 ];
@@ -41,7 +41,7 @@ export default function ExpandPanel({ data, yourColor, turn, highlight, onHighli
   return (
     <div className="flex flex-col gap-3">
       <div className="glass rounded-2xl p-4">
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">Карта</p>
+        <p className="rule mb-3">Карта</p>
 
         <div className="flex items-baseline gap-2 mb-2">
           <span className="text-2xl font-bold text-white">{size}×{size}</span>
@@ -56,9 +56,9 @@ export default function ExpandPanel({ data, yourColor, turn, highlight, onHighli
         </div>
 
         {full ? (
-          <p className="text-xs text-slate-400">Карта розрослася повністю. Далі — тільки бій.</p>
+          <p className="text-xs text-slate-400 next-ring">Карта розрослася повністю. Далі — тільки бій.</p>
         ) : (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-400 next-ring">
             Наступне кільце через <b className="text-slate-200">{nextIn}</b> {nextIn === 1 ? 'хід' : 'ходи'} —
             {' '}випаде на {growsMine ? <b className="text-emerald-300">ваш хід</b> : 'хід суперника'}.
             <span className="block text-[10px] text-slate-600 mt-1">Розширення чергується: раз ваше, раз суперника.</span>
@@ -67,7 +67,7 @@ export default function ExpandPanel({ data, yourColor, turn, highlight, onHighli
       </div>
 
       <div className="glass rounded-2xl p-4">
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">
+        <p className="rule mb-1">
           Землі <span className="text-slate-600">({expansions + 1}/9)</span>
         </p>
         <p className="text-[10px] text-slate-500 leading-snug mb-2.5">
@@ -103,7 +103,7 @@ export default function ExpandPanel({ data, yourColor, turn, highlight, onHighli
       </div>
 
       <details className="glass rounded-2xl p-4 group">
-        <summary className="text-xs text-slate-500 font-medium uppercase tracking-wider cursor-pointer list-none flex items-center gap-1">
+        <summary className="rule cursor-pointer list-none flex items-center gap-1">
           <span className="transition-transform group-open:rotate-90">▸</span> Правила карти
         </summary>
         <div className="flex flex-col gap-2 mt-3">

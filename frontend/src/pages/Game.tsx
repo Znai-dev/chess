@@ -367,35 +367,28 @@ export default function Game() {
     // anchored to the top: a vertically centred layout shifts the board every time a hint appears
     <div className="min-h-screen flex flex-col items-center p-4 lg:p-8">
       <div className="w-full max-w-6xl">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-6">
-          <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
+        <header className="flex items-center justify-between gap-3 mb-5">
+          <button onClick={() => navigate('/')} className="text-slate-400 hover:text-slate-100 transition-colors text-sm whitespace-nowrap">
             ← На головну
           </button>
-          <div className="flex items-center gap-2">
-            {MODE_LABEL[mode] && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {MODE_LABEL[mode]}
-              </span>
-            )}
-            <span className="text-slate-500 text-sm font-mono">#{roomId}</span>
-            <button onClick={() => setShowShare(true)} className="btn-secondary text-xs py-1.5 px-3">📋 Запросити</button>
+          <div className="flex items-center gap-2 min-w-0">
+            {MODE_LABEL[mode] && <span className="map-chip truncate">{MODE_LABEL[mode]}</span>}
+            <span className="text-slate-600 text-xs font-mono hidden sm:inline">#{roomId}</span>
+            <button onClick={() => setShowShare(true)} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">Запросити</button>
           </div>
-        </motion.div>
+        </header>
 
         <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
-          {/* Board column */}
-          <div className="flex flex-col items-center gap-3 w-full lg:w-auto">
+          {/* Board column — its width is fixed so nothing below it can move */}
+          <div className={`board-col mx-auto${mode === 'expand' ? ' wide' : ''}`}>
             <PlayerCard
               player={opponent} isOpponent
               isActive={!!playing && gameState?.turn === oppColor}
               captured={captured[oppColor]} advantage={material[oppColor] - material[yourColor ?? 'w']}
             />
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              className={`chess-container ${myTurn ? 'my-turn' : ''}`}
-            >
+            <div className="board-slot">
+            <div className={`chess-container ${myTurn ? 'my-turn' : ''}`}>
               {gameState && ex ? (
                 <BigBoard
                   data={ex}
@@ -426,11 +419,10 @@ export default function Game() {
                   flashes={flashes}
                 />
               ) : (
-                <div className="w-[480px] h-[480px] flex items-center justify-center bg-slate-800 rounded-xl">
-                  <div className="text-4xl animate-spin">♟</div>
-                </div>
+                <div className="w-full aspect-square flex items-center justify-center text-4xl text-slate-600 animate-pulse2">♟</div>
               )}
-            </motion.div>
+            </div>
+            </div>
 
             <TurnBar
               state={gameState}
@@ -448,12 +440,12 @@ export default function Game() {
           </div>
 
           {/* Sidebar */}
-          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="flex flex-col gap-4 w-full lg:w-72">
+          <div className="flex flex-col gap-4 w-full lg:w-72 fade-in">
             {!isSpectator && playing && (
               <div className="glass rounded-2xl p-4 flex flex-col gap-2">
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Дії</p>
-                <button onClick={handleDrawOffer} className="btn-secondary text-sm w-full">🤝 Запропонувати нічию</button>
-                <button onClick={handleResign} className="btn-danger text-sm w-full">🏳 Здатися</button>
+                <p className="rule mb-2">Дії</p>
+                <button onClick={handleDrawOffer} className="btn-secondary text-sm w-full">Запропонувати нічию</button>
+                <button onClick={handleResign} className="btn-danger text-sm w-full">Здатися</button>
               </div>
             )}
 
@@ -489,7 +481,7 @@ export default function Game() {
             )}
 
             <MoveHistory history={gameState?.history ?? []} />
-          </motion.div>
+          </div>
         </div>
       </div>
 

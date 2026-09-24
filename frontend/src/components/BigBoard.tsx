@@ -24,9 +24,9 @@ interface Props {
 
 const FILES = 'abcdefghijklmnopqrst';
 
-// Same squares as the 8x8 boards, so the two modes feel like one game.
-const LIGHT = [238, 238, 210] as const;
-const DARK = [118, 150, 86] as const;
+// Same walnut squares as the 8x8 boards, so every mode feels like one set.
+const LIGHT = [240, 217, 181] as const;
+const DARK = [181, 136, 99] as const;
 
 function hexToRgb(hex: string): [number, number, number] {
   return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
@@ -196,7 +196,7 @@ export default function BigBoard({
           const zoneIdx = data.zone[sq] ?? 0;
           const tint = zoneColors[Math.min(zoneIdx, zoneColors.length - 1)] ?? hexToRgb('#4a7c59');
           const isDark = (x + y) % 2 === 0;
-          const bg = mix(isDark ? DARK : LIGHT, tint, isDark ? 0.34 : 0.16);
+          const bg = mix(isDark ? DARK : LIGHT, tint, isDark ? 0.3 : 0.14);
 
           // A hairline where two zones meet, so the rings read as borders on a map.
           const edges: string[] = [];
@@ -204,10 +204,10 @@ export default function BigBoard({
             const other = rows[rr]?.[cc];
             return other ? (data.zone[other.sq] ?? 0) : zoneIdx;
           };
-          if (zoneAt(r - 1, c) !== zoneIdx) edges.push('inset 0 1px 0 rgba(12,20,12,.45)');
-          if (zoneAt(r + 1, c) !== zoneIdx) edges.push('inset 0 -1px 0 rgba(12,20,12,.45)');
-          if (zoneAt(r, c - 1) !== zoneIdx) edges.push('inset 1px 0 0 rgba(12,20,12,.45)');
-          if (zoneAt(r, c + 1) !== zoneIdx) edges.push('inset -1px 0 0 rgba(12,20,12,.45)');
+          if (zoneAt(r - 1, c) !== zoneIdx) edges.push('inset 0 1px 0 rgba(36,24,12,.45)');
+          if (zoneAt(r + 1, c) !== zoneIdx) edges.push('inset 0 -1px 0 rgba(36,24,12,.45)');
+          if (zoneAt(r, c - 1) !== zoneIdx) edges.push('inset 1px 0 0 rgba(36,24,12,.45)');
+          if (zoneAt(r, c + 1) !== zoneIdx) edges.push('inset -1px 0 0 rgba(36,24,12,.45)');
 
           const code = data.board[sq];
           const terrain = data.terrain[sq];

@@ -68,7 +68,7 @@ export default function ShareModal({ roomId, onClose, waitingForOpponent }: Prop
             <input
               readOnly
               value={link}
-              className="flex-1 px-3 py-2.5 rounded-xl bg-slate-800/70 border border-slate-700/60 text-slate-300 text-sm font-mono truncate focus:outline-none"
+              className="flex-1 px-3 py-2.5 rounded-xl bg-[rgba(255,244,214,.05)] border border-slate-700/60 text-slate-300 text-sm font-mono truncate focus:outline-none"
               onClick={(e) => (e.target as HTMLInputElement).select()}
             />
             <button

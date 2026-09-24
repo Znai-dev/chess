@@ -196,7 +196,7 @@ export default function ChessBoard({
   const fogSet = useMemo(() => new Set(fogCoverSquares ?? []), [fogCoverSquares]);
 
   return (
-    <div ref={wrapRef} className="relative" style={{ width: 'min(480px, 90vw)', height: 'min(480px, 90vw)' }}>
+    <div ref={wrapRef} className="relative" style={{ width: '100%', aspectRatio: '1' }}>
       <Chessboard
         id="chess-board"
         boardWidth={size || 480}
@@ -206,8 +206,8 @@ export default function ChessBoard({
         boardOrientation={orientation}
         customSquareStyles={customSquareStyles}
         customBoardStyle={{ borderRadius: '0px', boxShadow: 'none' }}
-        customDarkSquareStyle={{ backgroundColor: '#769656' }}
-        customLightSquareStyle={{ backgroundColor: '#eeeed2' }}
+        customDarkSquareStyle={{ backgroundColor: '#b58863' }}
+        customLightSquareStyle={{ backgroundColor: '#f0d9b5' }}
         arePiecesDraggable={canInteract && !targetMode}
         isDraggablePiece={({ sourceSquare }) => movesFrom.has(sourceSquare)}
         customArrows={lastMove ? [[lastMove.from as never, lastMove.to as never, 'rgba(250, 204, 21, 0.8)']] : []}

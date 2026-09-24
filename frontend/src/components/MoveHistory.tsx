@@ -19,7 +19,7 @@ export default function MoveHistory({ history }: Props) {
 
   return (
     <div className="glass rounded-2xl p-4 flex flex-col" style={{ maxHeight: '320px' }}>
-      <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">Історія ходів</p>
+      <p className="rule mb-3">Історія ходів</p>
 
       {history.length === 0 ? (
         <p className="text-slate-600 text-xs text-center py-4">Ходів ще не було</p>

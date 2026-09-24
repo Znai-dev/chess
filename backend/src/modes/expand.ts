@@ -55,7 +55,8 @@ interface Zone {
 
 /** Index 0 is the starting 4x4; 1..8 are the rings, opened in order. */
 export const ZONES: Zone[] = [
-  { name: 'Серце карти', tint: '#4a7c59', walls: 0, portals: 0, treasures: 0, spawn: [] },
+  // the heart keeps the plain walnut of a normal board; the rings add the colour
+  { name: 'Серце карти', tint: '#b58863', walls: 0, portals: 0, treasures: 0, spawn: [] },
   { name: 'Ліс',         tint: '#2f6b3a', walls: 2, portals: 0, treasures: 1, spawn: ['p', 'p', 'n'] },
   { name: 'Пустеля',     tint: '#9c8340', walls: 2, portals: 1, treasures: 2, spawn: ['p', 'p', 'n', 'b'] },
   { name: 'Гори',        tint: '#63697a', walls: 5, portals: 0, treasures: 1, spawn: ['p', 'p', 'p', 'b', 'r'] },

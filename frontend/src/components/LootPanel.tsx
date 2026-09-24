@@ -27,7 +27,7 @@ export default function LootPanel({ data, fen, yourColor }: Props) {
   return (
     <div className="glass rounded-2xl p-4 flex flex-col gap-3">
       <div>
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">Ефекти на полі</p>
+        <p className="rule mb-2">Ефекти на полі</p>
         {active.length === 0 ? (
           <p className="text-xs text-slate-600">Поки що ніхто нічого не підібрав. Скрині 📦 — на дошці.</p>
         ) : (
@@ -50,7 +50,7 @@ export default function LootPanel({ data, fen, yourColor }: Props) {
       </div>
 
       <details className="group">
-        <summary className="text-xs text-slate-500 font-medium uppercase tracking-wider cursor-pointer list-none flex items-center gap-1">
+        <summary className="rule cursor-pointer list-none flex items-center gap-1">
           <span className="transition-transform group-open:rotate-90">▸</span> Що випадає зі скринь
         </summary>
         <div className="flex flex-col gap-1.5 mt-2">
